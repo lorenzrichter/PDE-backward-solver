@@ -75,8 +75,8 @@ class CosExp():
         self.T = T
         self.B = np.eye(self.d) / np.sqrt(self.d)
         self.B_pt = pt.tensor(self.B).float()
-        self.alpha = np.ones([self.d, 1])
-        self.alpha_pt = pt.tensor(self.alpha).float()
+        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
         self.X_0 = np.zeros(self.d)
         self.delta_t_v = 0.001
 
@@ -109,3 +109,50 @@ class CosExp():
     
     def v_true(self, x, t):
         return np.cos(np.sum(x, 1)) * np.exp((self.T - t) / 2)
+    
+    
+
+class AllenKahn():
+    def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+
+        np.random.seed(seed)
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B = np.eye(self.d) * np.sqrt(2)
+        self.B_pt = pt.tensor(self.B).float()
+        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
+        self.X_0 = np.zeros(self.d)
+        self.delta_t_v = 0.001
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return 0
+            # return pt.zeros(x.shape)
+        return 0
+        # return np.zeros(x.shape)
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return pt.tensor(self.B_pt)
+        return self.B
+
+    def h(self, t, x, y, z):
+        if self.modus == 'pt':
+            return y - y**3
+        return y - y**3
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return 1/(2+2/5*pt.norm(x, 1)**2)
+        return 1/(2+2/5*np.linalg.norm(x, axis=1)**2)
+
+    def u_true(self, x, t):
+        print('no reference solution known')
+        return 0
+    
+    def v_true(self, x, t):
+        print('no reference solution known')
+        return 0
