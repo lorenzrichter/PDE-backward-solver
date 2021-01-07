@@ -226,3 +226,147 @@ class UnboundedSin():
     def v_true(self, x, t):
         a = 1.0 * np.arange(1, self.d + 1)        
         return (self.T - t) * np.mean(np.where(x < 0,  np.sin(x), x), axis=-1) + np.cos(x @ a)
+
+
+
+
+
+class Schloegl_SPDE():
+    def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+        area = [-1, 1] # interval of the PDE
+        nu = 1 # diffusion constant
+        boundary = 'Neumann' # use 'Neumann' or "Dirichlet
+        if boundary_condition == 'Dirichlet':
+            print('Dirichlet boundary')
+            h = (b-a) / (d+1)
+            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
+            A = nu / h**2 * A
+            B = np.diag(np.ones(d-1), 1) - np.diag(np.ones(d-1), -1)
+            B = 1/(2*h) * B
+            Q = h*np.eye(d)
+        elif boundary_condition == 'Neumann':
+            print('Neumann boundary')
+            h = (b-a)/(d-1)             # step size in space
+            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
+            A[0,1] = 2; A[d-1, d-2] = 2
+            A = nu / h**2 * A
+            Q = h*np.eye(d)
+            Q[0,0] /=2; Q[d-1,d-1] /=2  # for neumann boundary
+        else:
+            print('Wrong boundary!')
+        self.A = A
+        _B = (np.bitwise_and(s > -0.4, s < 0.4))*1.0
+        B = np.zeros(shape=(d, 1))   
+        B[:, 0] = _B
+        control_dim = B.shape[1]
+        R = lambd * np.identity(control_dim)
+
+
+        np.random.seed(seed)
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B = 1/np.sqrt(self.d)*np.eye(self.d)
+        self.B_pt = pt.tensor(self.B).float()
+        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
+        self.X_0 = np.zeros(self.d)
+        self.rescal = 0.5
+        self.Sig = self.B[0,0]
+        self.delta_t_v = 0.001
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return pt.mm(self.A_pt, x.t()).t()
+        return self.A.dot(x.T).T
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return pt.tensor(self.B_pt)
+        return self.B
+
+    def h( self, t, x, u, Du):
+        # u time derivative
+        Ut = - np.mean(np.where(x < 0,  np.sin(x),x), axis=-1)
+        # u value
+        xSum= x @ np.arange(1.,self.d+1.)
+        cosU= np.cos(xSum)
+        UVal = -(self.T-t) * Ut+ cosU
+        # U X derivarive (sum)
+        DUVal = (self.T-t)*np.mean(np.where(x < 0,  np.cos(x),np.ones(np.shape(x))), axis=-1) - self.d*(self.d+1.)/2.* np.sin(xSum)
+        # sum of diag of Hessian
+        D2UVal = -cosU* self.d*(self.d+1)*(2*self.d+1)/6. - (self.T-t)*np.mean(np.where(x < 0,  np.sin(x),np.zeros(np.shape(x))), axis=-1)
+       
+        # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
+        ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + 1/np.sqrt(self.d) * np.multiply(u,np.sum(Du,axis=-1)))
+        return  ret.squeeze()
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return 0
+        a = 1.0 * np.arange(1, self.d + 1)
+        return np.cos(x@a)
+
+    def u_true(self, x, t):
+        print('no reference solution known')
+        return 0
+    
+    def v_true(self, x, t):
+        a = 1.0 * np.arange(1, self.d + 1)        
+        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
+
+
+
+
+class bondprice_multidim():
+    def __init__(self, name='bondprice_multidim', d=1, T=1, seed=42, modus='np'):
+
+        np.random.seed(seed)
+        self.A = np.random.uniform(size=d)
+        self.B = np.random.uniform(size=d)
+        self.S = np.diag(np.random.uniform(size=d))
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B_pt = pt.tensor(self.B).float()
+        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
+        self.X_0 = np.zeros(self.d)
+        self.rescal = 0.5
+        self.delta_t_v = 0.001
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return 0
+            # return pt.zeros(x.shape)
+        return (self.A*(self.B-x)).reshape(-1, self.d)
+
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return pt.tensor(self.B_pt)
+        # return self.B
+        ret =  (self.S @ np.sqrt(np.abs(x).T)).T
+        return ret
+        # return (self.S@np.sqrt(np.abs(x))).reshape(-1, self.d)
+
+
+    def h( self, t, x, u, Du):
+        return -u*np.max(x, 1)[0]
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return 0
+        ret = np.ones((x.shape[0]))
+        return ret.squeeze()
+
+
+    def u_true(self, x, t):
+        print('no reference solution known')
+        return 0
+    
+    def v_true(self, x, t):
+        a = 1.0 * np.arange(1, self.d + 1)        
+        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
