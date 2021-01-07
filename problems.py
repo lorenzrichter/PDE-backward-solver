@@ -166,13 +166,14 @@ class UnboundedSin():
         self.name = name
         self.d = d
         self.T = T
-        self.B = 1/np.sqrt(self.d)*np.eye(self.d)
+        self.B = 1 / np.sqrt(self.d) * np.eye(self.d)
         self.B_pt = pt.tensor(self.B).float()
         self.alpha = np.ones([self.d, 1]) # not needed, can delete?
         self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
-        self.X_0 = np.zeros(self.d)
+        self.X_0 = 0.5 * np.ones(self.d)
         self.rescal = 0.5
-        self.Sig = self.B[0,0]
+        self.Sig = self.B[0, 0]
+        self.Sig_pt = self.B_pt[0, 0]
         self.delta_t_v = 0.001
 
     def b(self, x):
@@ -187,27 +188,36 @@ class UnboundedSin():
             return pt.tensor(self.B_pt)
         return self.B
 
-    def h( self, t, x, u, Du):
-        # u time derivative
-        Ut = - np.mean(np.where(x < 0,  np.sin(x),x), axis=-1)
-        # u value
-        xSum= x @ np.arange(1.,self.d+1.)
-        cosU= np.cos(xSum)
-        UVal = -(self.T-t) * Ut+ cosU
-        # U X derivarive (sum)
-        DUVal = (self.T-t)*np.mean(np.where(x < 0,  np.cos(x),np.ones(np.shape(x))), axis=-1) - self.d*(self.d+1.)/2.* np.sin(xSum)
-        # sum of diag of Hessian
-        D2UVal = -cosU* self.d*(self.d+1)*(2*self.d+1)/6. - (self.T-t)*np.mean(np.where(x < 0,  np.sin(x),np.zeros(np.shape(x))), axis=-1)
-       
-        # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
-        ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + 1/np.sqrt(self.d) * np.multiply(u,np.sum(Du,axis=-1)))
-        return  ret.squeeze()
+    def h(self, t, x, u, Du):
+        if self.modus == 'pt':
+            Ut = - pt.mean(pt.where(x < 0, pt.sin(x), x), 1)
+            xSum = x @ pt.arange(1., self.d + 1.)
+            cosU = pt.cos(xSum)
+            UVal = -(self.T - t) * Ut + cosU
+            DUVal = (self.T - t) * pt.mean(pt.where(x < 0, pt.cos(x), pt.ones(x.shape)), 1) - self.d * (self.d + 1.) / 2. * pt.sin(xSum)
+            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * pt.mean(pt.where(x < 0,  pt.sin(x), pt.zeros(x.shape)), 1)
+            ret =  - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float()) * u.squeeze() * pt.sum(Du, 1))
+        else:
+            # u time derivative
+            Ut = - np.mean(np.where(x < 0, np.sin(x), x), axis=-1)
+            # u value
+            xSum= x @ np.arange(1., self.d + 1.)
+            cosU= np.cos(xSum)
+            UVal = -(self.T - t) * Ut + cosU
+            # U X derivarive (sum)
+            DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
+            # sum of diag of Hessian
+            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0,  np.sin(x), np.zeros(np.shape(x))), axis=-1)
+            # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
+            ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * ( np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
+        return ret.squeeze()
 
     def g(self, x):
-        if self.modus == 'pt':
-            return 0
         a = 1.0 * np.arange(1, self.d + 1)
-        return np.cos(x@a)
+        if self.modus == 'pt':
+            a = pt.tensor(a).float()
+            return pt.cos(pt.sum(x * a.unsqueeze(0), 1))
+        return np.cos(x @ a)
 
     def u_true(self, x, t):
         print('no reference solution known')
@@ -215,4 +225,4 @@ class UnboundedSin():
     
     def v_true(self, x, t):
         a = 1.0 * np.arange(1, self.d + 1)        
-        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
+        return (self.T - t) * np.mean(np.where(x < 0,  np.sin(x), x), axis=-1) + np.cos(x @ a)
