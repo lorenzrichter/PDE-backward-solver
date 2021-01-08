@@ -27,11 +27,13 @@ def get_X_process(problem, K, delta_t, seed=42, sigma='constant'):
                               + problem.sigma(X[n, :, :]).dot(xi[n + 1, :, :].T).T * sq_delta_t)
 
     else:
-        problem.modus == 'pytorch'
-        X = pt.tensor(X)
-        xi = pt.tensor(xi)
-        for n in range(N):
+        if problem.modus == 'pytorch':
+            for n in range(N):
             X[n + 1, :, :] = (X[n, :, :] + problem.b(X[n, :, :]) * delta_t
-                              + pt.bmm(pt.tensor(problem.sigma(X[n, :, :])), pt.tensor(xi[n + 1, :, :]).unsqueeze(2)).squeeze(2) * sq_delta_t)
+                                + pt.bmm(pt.tensor(problem.sigma(X[n, :, :])), pt.tensor(xi[n + 1, :, :]).unsqueeze(2)).squeeze(2) * sq_delta_t)
+        else:
+            for n in range(N):
+                X[n + 1, :, :] = (X[n, :, :] + problem.b(X[n, :, :]) * delta_t
+                                + np.einsum('ijl,ij->il', problem.sigma(X[n, :, :]), xi[n + 1, :, :]) * sq_delta_t)
 
     return X, xi

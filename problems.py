@@ -158,66 +158,96 @@ class AllenKahn():
         return 0
 
 
-class UnboundedSin():
+class Schloegl_SPDE():
     def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+        area = [-1, 1] # interval of the PDE
+        nu = 1 # diffusion constant
+        boundary = 'Neumann' # use 'Neumann' or "Dirichlet
+        if boundary_condition == 'Dirichlet':
+            print('Dirichlet boundary')
+            h = (b-a) / (d+1)
+            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
+            A = nu / h**2 * A
+            B = np.diag(np.ones(d-1), 1) - np.diag(np.ones(d-1), -1)
+            B = 1/(2*h) * B
+            Q = h*np.eye(d)
+        elif boundary_condition == 'Neumann':
+            print('Neumann boundary')
+            h = (b-a)/(d-1)             # step size in space
+            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
+            A[0,1] = 2; A[d-1, d-2] = 2
+            A = nu / h**2 * A
+            Q = h*np.eye(d)
+            Q[0,0] /=2; Q[d-1,d-1] /=2  # for neumann boundary
+        else:
+            print('Wrong boundary!')
+        self.A = A
+        _B = (np.bitwise_and(s > -0.4, s < 0.4))*1.0
+        B = np.zeros(shape=(d, 1))   
+        B[:, 0] = _B
+        control_dim = B.shape[1]
+        self.R = lambd * np.identity(control_dim)
+        self.R_inv = np.linalg.inv(self.R)
+        self.Pi = la.solve_continuous_are(A, B, Q, self.R)
+
 
         np.random.seed(seed)
         self.modus = modus
         self.name = name
         self.d = d
         self.T = T
-        self.B = 1 / np.sqrt(self.d) * np.eye(self.d)
+        self.B = 1/np.sqrt(self.d)*np.eye(self.d)
         self.B_pt = pt.tensor(self.B).float()
         self.alpha = np.ones([self.d, 1]) # not needed, can delete?
         self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
-        self.X_0 = 0.5 * np.ones(self.d)
+        self.X_0 = np.zeros(self.d)
         self.rescal = 0.5
-        self.Sig = self.B[0, 0]
-        self.Sig_pt = self.B_pt[0, 0]
+        self.Sig = self.B[0,0]
         self.delta_t_v = 0.001
+
+    def calc_u(self, t, x, grad):
+        if len(x.shape) == 1:
+            return -self.R_inv @ np.dot(grad, self.B)/2
+        else:
+            u_mat = np.tensordot(grad, self.B, axes=((1),(0)))
+            return -self.R_inv @ u_mat.T / 2
+
+    def calc_grad_fixed_control(self, t, x):
+        return 2*self.Pi @ x
+
+
 
     def b(self, x):
         if self.modus == 'pt':
-            return 0
-            # return pt.zeros(x.shape)
-        return 0
-        # return np.zeros(x.shape)
+            return pt.mm(self.A_pt, x.t()).t()
+        return self.A.dot(x.T).T
 
     def sigma(self, x):
         if self.modus == 'pt':
             return pt.tensor(self.B_pt)
         return self.B
 
-    def h(self, t, x, u, Du):
-        if self.modus == 'pt':
-            Ut = - pt.mean(pt.where(x < 0, pt.sin(x), x), 1)
-            xSum = x @ pt.arange(1., self.d + 1.)
-            cosU = pt.cos(xSum)
-            UVal = -(self.T - t) * Ut + cosU
-            DUVal = (self.T - t) * pt.mean(pt.where(x < 0, pt.cos(x), pt.ones(x.shape)), 1) - self.d * (self.d + 1.) / 2. * pt.sin(xSum)
-            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * pt.mean(pt.where(x < 0,  pt.sin(x), pt.zeros(x.shape)), 1)
-            ret =  - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float()) * u.squeeze() * pt.sum(Du, 1))
-        else:
-            # u time derivative
-            Ut = - np.mean(np.where(x < 0, np.sin(x), x), axis=-1)
-            # u value
-            xSum= x @ np.arange(1., self.d + 1.)
-            cosU= np.cos(xSum)
-            UVal = -(self.T - t) * Ut + cosU
-            # U X derivarive (sum)
-            DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
-            # sum of diag of Hessian
-            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0,  np.sin(x), np.zeros(np.shape(x))), axis=-1)
-            # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
-            ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * ( np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
-        return ret.squeeze()
+    def h( self, t, x, u, Du):
+        # u time derivative
+        Ut = - np.mean(np.where(x < 0,  np.sin(x),x), axis=-1)
+        # u value
+        xSum= x @ np.arange(1.,self.d+1.)
+        cosU= np.cos(xSum)
+        UVal = -(self.T-t) * Ut+ cosU
+        # U X derivarive (sum)
+        DUVal = (self.T-t)*np.mean(np.where(x < 0,  np.cos(x),np.ones(np.shape(x))), axis=-1) - self.d*(self.d+1.)/2.* np.sin(xSum)
+        # sum of diag of Hessian
+        D2UVal = -cosU* self.d*(self.d+1)*(2*self.d+1)/6. - (self.T-t)*np.mean(np.where(x < 0,  np.sin(x),np.zeros(np.shape(x))), axis=-1)
+       
+        # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
+        ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + 1/np.sqrt(self.d) * np.multiply(u,np.sum(Du,axis=-1)))
+        return  ret.squeeze()
 
     def g(self, x):
-        a = 1.0 * np.arange(1, self.d + 1)
         if self.modus == 'pt':
-            a = pt.tensor(a).float()
-            return pt.cos(pt.sum(x * a.unsqueeze(0), 1))
-        return np.cos(x @ a)
+            return 0
+        a = 1.0 * np.arange(1, self.d + 1)
+        return np.cos(x@a)
 
     def u_true(self, x, t):
         print('no reference solution known')
@@ -225,8 +255,7 @@ class UnboundedSin():
     
     def v_true(self, x, t):
         a = 1.0 * np.arange(1, self.d + 1)        
-        return (self.T - t) * np.mean(np.where(x < 0,  np.sin(x), x), axis=-1) + np.cos(x @ a)
-
+        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
 
 
 
@@ -324,22 +353,22 @@ class bondprice_multidim():
 
         np.random.seed(seed)
         self.A = np.random.uniform(size=d)
+        self.A_pt = pt.tensor(self.A).float()
         self.B = np.random.uniform(size=d)
-        self.S = np.diag(np.random.uniform(size=d))
+        self.B_pt = pt.tensor(self.B).float()
+        self.S = np.random.uniform(size=d)
+        self.S_pt = pt.tensor(self.S).float()
         self.modus = modus
         self.name = name
         self.d = d
         self.T = T
-        self.B_pt = pt.tensor(self.B).float()
-        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
-        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
         self.X_0 = np.zeros(self.d)
         self.rescal = 0.5
         self.delta_t_v = 0.001
 
     def b(self, x):
         if self.modus == 'pt':
-            return 0
+            return (self.A_pt*(self.B_pt-x)).reshape(-1, self.d)
             # return pt.zeros(x.shape)
         return (self.A*(self.B-x)).reshape(-1, self.d)
 
@@ -348,7 +377,18 @@ class bondprice_multidim():
         if self.modus == 'pt':
             return pt.tensor(self.B_pt)
         # return self.B
-        ret =  (self.S @ np.sqrt(np.abs(x).T)).T
+        sqrtx = np.sqrt(np.abs(x))
+        if len(x.shape) == 2:
+            ret = np.zeros((x.shape[0], self.S.size, self.S.size))
+            Sdotsqrtx = np.einsum('i,ji->ji', self.S, sqrtx)
+            for i0 in range(x.shape[1]):
+                ret[:,i0,i0] = Sdotsqrtx[:,i0]
+        else:
+            ret = np.zeros((self.S.size, self.S.size))
+            Sdotsqrtx = np.einsum('i,i->i', self.S, sqrtx)
+            ret = np.diag(Sdotsqrtx)
+
+        # ret =  (self.S @ np.sqrt(np.abs(x).T)).T
         return ret
         # return (self.S@np.sqrt(np.abs(x))).reshape(-1, self.d)
 
