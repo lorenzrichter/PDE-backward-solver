@@ -316,9 +316,9 @@ class Schloegl_SPDE():
         baruRbaru  = np.einsum('li,ik,lk->l', baru,self.R,baru)
         BtgradvRinvBtgradv = np.einsum('il,ik,kl->l', Btgradv, self.R_inv, Btgradv)
         baruBtgradv  = np.einsum('li,il->l', baru, Btgradv)
-        return -(xtqx - 1/4*BtgradvRinvBtgradv - baruBtgradv + baruRbaru)
+        # return -(xtqx - 1/4*BtgradvRinvBtgradv - baruBtgradv + baruRbaru)
         # print('np.linalg.norm(xtqx)', np.linalg.norm(xtqx), 'np.linalg.norm(baruRbaru)', np.linalg.norm(baruRbaru))
-        # return - xtqx - baruRbaru
+        return - xtqx - baruRbaru
 
     def g(self, x):
         if self.modus == 'pt':
@@ -387,7 +387,7 @@ class bondprice_multidim():
 
 
     def h( self, t, x, u, Du):
-        return -u*np.max(x, 1)[0]
+        return -u*np.max(x, 1)
 
     def g(self, x):
         if self.modus == 'pt':
