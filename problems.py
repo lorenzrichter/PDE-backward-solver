@@ -344,10 +344,13 @@ class bondprice_multidim():
 
         np.random.seed(seed)
         self.A = np.random.uniform(size=d)
+        # self.A = 0.5*np.ones(d)
         self.A_pt = pt.tensor(self.A).float()
         self.B = np.random.uniform(size=d)
+        # self.B = 0.5*np.ones(d)
         self.B_pt = pt.tensor(self.B).float()
         self.S_vec = np.random.uniform(size=d)
+        # self.S_vec = 0.5*np.ones(d)
         self.S = np.zeros((d,d))
         self.S[:, 0] = self.S_vec
         self.S_pt = pt.tensor(self.S).float()
@@ -401,8 +404,8 @@ class bondprice_multidim():
         return 0
     
     def v_true(self, x, t):
-        a = 1.0 * np.arange(1, self.d + 1)        
-        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
+        print('no reference solution known')
+        return 0
 
 
     # t \in R                   is current time
@@ -421,10 +424,11 @@ class bondprice_multidim():
         sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:,:,0], sigma[:,:,0])
         # print('sigma',sigma)
         # print('sigmaTsigma', sigmaTsigma)
-        print('vt', vt)
-        print('A B x dot vx', np.einsum('il,il->i', self.A*(self.B-x), vx))
-        print('sigma vxx', 1/2*(np.sum(sigma * vxx, axis = (1,2))))
-        print('max x dot v', np.max(x, axis=1) * v)
+        # print('vt', vt)
+        # print('A B x dot vx', np.einsum('il,il->i', self.A*(self.B-x), vx))
+        # print('sigma vxx', 1/2*(np.sum(sigma * vxx, axis = (1,2))))
+        # print('v', v)
+        # print('max x dot v', np.max(x, axis=1) * v)
         # sqrtx = np.sqrt(np.abs(x))
         # Sdotsqrtx = np.einsum('i,ji->ji', self.S, sqrtx)
         # Sdotsqrtxnext = np.einsum('ij, il->ijl', Sdotsqrtx, Sdotsqrtx)
@@ -435,9 +439,8 @@ class bondprice_multidim():
         # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(Sdotsqrtxnext * vxx, axis = (1,2))) - np.max(x, axis=1) * v
         loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(sigmaTsigma * vxx, axis = (1,2))) - np.max(x, axis=1) * v
         # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(sigma * vxx, axis = (1,2))) - np.max(x, axis=1) * v
+        return loss
 
-        print('loss', loss)
 
-
-        print('in pdeloss, done')
+        # print('in pdeloss, done')
 

@@ -34,6 +34,8 @@ def get_X_process(problem, K, delta_t, seed=42, sigma='constant'):
             X[n + 1, :, :] = (X[n, :, :] + problem.b(X[n, :, :]) * delta_t
                               + np.einsum('ijl,il->ij', problem.sigma(X[n, :, :]), xi[n + 1, :, :]) * sq_delta_t)
             # print('noise', np.einsum('ijl,il->ij', problem.sigma(X[n, :, :]), xi[n + 1, :, :]) * sq_delta_t)
+            # print('noise parts:', problem.sigma(X[n, :, :]), 'xi',  xi[n + 1, :, :], 'sq_delta_t', sq_delta_t)
+            
 
 
     return X, xi
