@@ -339,19 +339,17 @@ class Schloegl_SPDE():
 
 
 
-class bondprice_multidim():
+class BondpriceMultidim():
     def __init__(self, name='bondprice_multidim', d=1, T=1, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.A = np.random.uniform(size=d)
-        # self.A = 0.5*np.ones(d)
         self.A_pt = pt.tensor(self.A).float()
         self.B = np.random.uniform(size=d)
-        # self.B = 0.5*np.ones(d)
         self.B_pt = pt.tensor(self.B).float()
         self.S_vec = np.random.uniform(size=d)
-        # self.S_vec = 0.5*np.ones(d)
-        self.S = np.zeros((d,d))
+        self.S_vec_pt = pt.tensor(self.S_vec).float()
+        self.S = np.zeros((d, d))
         self.S[:, 0] = self.S_vec
         self.S_pt = pt.tensor(self.S).float()
         self.modus = modus
@@ -363,40 +361,46 @@ class bondprice_multidim():
 
     def b(self, x):
         if self.modus == 'pt':
-            return (self.A_pt*(self.B_pt-x)).reshape(-1, self.d)
+            return (self.A_pt * (self.B_pt - x)).reshape(-1, self.d)
             # return pt.zeros(x.shape)
-        return (self.A*(self.B-x)).reshape(-1, self.d)
+        return (self.A * (self.B - x)).reshape(-1, self.d)
 
 
     def sigma(self, x):
+
         if self.modus == 'pt':
-            return pt.tensor(self.B_pt)
-        # return self.B
+            sqrtx = pt.sqrt(pt.abs(x))
+            ret = pt.zeros((x.shape[0], self.S_vec.size, self.S_vec.size))
+            # Sdotsqrtx = np.einsum('i,ji->ji', self.S_vec, sqrtx)
+            Sdotsqrtx = self.S_vec_pt * sqrtx
+            ret[:, :, 0] = Sdotsqrtx
+            return ret
+
         sqrtx = np.sqrt(np.abs(x))
         if len(x.shape) == 2:
             ret = np.zeros((x.shape[0], self.S_vec.size, self.S_vec.size))
             # Sdotsqrtx = np.einsum('i,ji->ji', self.S_vec, sqrtx)
             Sdotsqrtx = self.S_vec * sqrtx
-            ret[:,:,0] = Sdotsqrtx
+            ret[:, :, 0] = Sdotsqrtx
         else:
             ret = np.zeros((self.S_vec.size, self.S_vec.size))
             Sdotsqrtx = np.einsum('i,i->i', self.S_vec, sqrtx)
-            ret = ret[:,0] = Sdotsqrtx
-            input('onesample')
+            ret = ret[:, 0] = Sdotsqrtx
 
         # ret =  (self.S @ np.sqrt(np.abs(x).T)).T
         return ret
         # return (self.S@np.sqrt(np.abs(x))).reshape(-1, self.d)
 
 
-    def h( self, t, x, u, Du):
-        return -u*np.max(x, 1)
+    def h(self, t, x, u, Du):
+        if self.modus == 'pt':
+            return -u * pt.max(x, 1)[0]
+        return -u * np.max(x, 1)
 
     def g(self, x):
         if self.modus == 'pt':
-            return 0
-        ret = np.ones((x.shape[0]))
-        return ret.squeeze()
+            return pt.ones((x.shape[0])).squeeze()
+        return np.ones((x.shape[0])).squeeze()
 
 
     def u_true(self, x, t):
@@ -406,7 +410,6 @@ class bondprice_multidim():
     def v_true(self, x, t):
         print('no reference solution known')
         return 0
-
 
     # t \in R                   is current time
     # x \in samples x d         is sample matrix
@@ -424,7 +427,7 @@ class bondprice_multidim():
         assert len(vxx.shape) == 3
         sigma = self.sigma(x)
         assert sigma.shape == (x.shape[0], self.d, self.d)
-        sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:,:,0], sigma[:,:,0])
+        sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
         # print('sigma',sigma)
         # print('sigmaTsigma', sigmaTsigma)
         # print('vt', vt)
