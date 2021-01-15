@@ -358,7 +358,7 @@ class bondprice_multidim():
         self.name = name
         self.d = d
         self.T = T
-        self.X_0 = np.zeros(self.d)
+        self.X_0 = np.ones(self.d)
         self.sigma_modus = 'variable'
 
     def b(self, x):
@@ -414,6 +414,9 @@ class bondprice_multidim():
     # vt \in samples            is time derivative of v at t, x
     # vx \in samples x d        is gradient of v w.r.t x at t, x
     # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
     def pde_loss(self, t, x, v, vt, vx, vxx):
         assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
         assert len(v.shape) == 1
