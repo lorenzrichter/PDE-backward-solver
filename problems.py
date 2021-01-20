@@ -1,3 +1,5 @@
+#pylint: disable=invalid-name, too-many-instance-attributes, too-many-arguments
+
 import numpy as np
 import torch as pt
 
@@ -33,8 +35,7 @@ class LLGC():
     def b(self, x):
         if self.modus == 'pt':
             return pt.mm(self.A_pt, x.t()).t()
-        return self.A.dot(x.T).T + NL(t, x)
-
+        return self.A.dot(x.T).T
 
     def sigma(self, x):
         if self.modus == 'pt':
@@ -67,8 +68,7 @@ class LLGC():
                         .dot(expm(self.A.T * (self.T - t_n)))) * self.delta_t_v
         return ((expm(self.A * (self.T - t)).dot(x.t()).T).dot(self.alpha)
                 - 0.5 * self.alpha.T.dot(Sigma_n.dot(self.alpha)))
-    
-    
+
 
 class CosExp():
     def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
@@ -111,14 +111,13 @@ class CosExp():
 
     def u_true(self, x, t):
         return np.repeat((np.sin(np.sum(x, 1)) * np.exp((self.T - t) / 2) / np.sqrt(self.d))[:, np.newaxis], 2, 1)
-    
+
     def v_true(self, x, t):
         return np.cos(np.sum(x, 1)) * np.exp((self.T - t) / 2)
-    
-    
+
 
 class AllenKahn():
-    def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+    def __init__(self, name='CosExp', d=1, T=0.3, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.modus = modus
@@ -134,8 +133,7 @@ class AllenKahn():
 
     def b(self, x):
         if self.modus == 'pt':
-            return 0
-            # return pt.zeros(x.shape)
+            return pt.zeros(x.shape)
         return 0
         # return np.zeros(x.shape)
 
@@ -145,19 +143,17 @@ class AllenKahn():
         return self.B
 
     def h(self, t, x, y, z):
-        if self.modus == 'pt':
-            return y - y**3
         return y - y**3
 
     def g(self, x):
         if self.modus == 'pt':
-            return 1/(2+2/5*pt.norm(x, 1)**2)
-        return 1/(2+2/5*np.linalg.norm(x, axis=1)**2)
+            return 1 / (2 + 2 / 5 * pt.norm(x, 1)**2)
+        return 1 / (2 + 2 / 5 * np.linalg.norm(x, axis=1)**2)
 
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
-    
+
     def v_true(self, x, t):
         print('no reference solution known')
         return 0
@@ -171,18 +167,17 @@ class UnboundedSin():
         self.name = name
         self.d = d
         self.T = T
-        self.B = 1/np.sqrt(self.d)*np.eye(self.d)
+        self.B = 1 / np.sqrt(self.d) * np.eye(self.d)
         self.B_pt = pt.tensor(self.B).float()
         self.alpha = np.ones([self.d, 1]) # not needed, can delete?
         self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
-        self.X_0 = np.zeros(self.d)
+        self.X_0 = 0.5 * np.ones(self.d)
         self.rescal = 0.5
         self.Sig = self.B[0,0]
 
     def b(self, x):
         if self.modus == 'pt':
-            return 0
-            # return pt.zeros(x.shape)
+            return pt.zeros(x.shape)
         return 0
         # return np.zeros(x.shape)
 
@@ -191,65 +186,65 @@ class UnboundedSin():
             return pt.tensor(self.B_pt)
         return self.B
 
-    def h( self, t, x, u, Du):
+    def h(self, t, x, u, Du):
         # u time derivative
-        Ut = - np.mean(np.where(x < 0,  np.sin(x),x), axis=-1)
+        Ut = - np.mean(np.where(x < 0,  np.sin(x), x), axis=-1)
         # u value
-        xSum= x @ np.arange(1.,self.d+1.)
-        cosU= np.cos(xSum)
-        UVal = -(self.T-t) * Ut+ cosU
+        xSum = x @ np.arange(1., self.d + 1.)
+        cosU = np.cos(xSum)
+        UVal = -(self.T - t) * Ut + cosU
         # U X derivarive (sum)
-        DUVal = (self.T-t)*np.mean(np.where(x < 0,  np.cos(x),np.ones(np.shape(x))), axis=-1) - self.d*(self.d+1.)/2.* np.sin(xSum)
+        DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
         # sum of diag of Hessian
-        D2UVal = -cosU* self.d*(self.d+1)*(2*self.d+1)/6. - (self.T-t)*np.mean(np.where(x < 0,  np.sin(x),np.zeros(np.shape(x))), axis=-1)
-       
+        D2UVal = -cosU* self.d*(self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0, np.sin(x), np.zeros(np.shape(x))), axis=-1)
+
         # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
-        ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + 1/np.sqrt(self.d) * np.multiply(u,np.sum(Du,axis=-1)))
+        ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
         return  ret.squeeze()
 
     def g(self, x):
         if self.modus == 'pt':
             return 0
         a = 1.0 * np.arange(1, self.d + 1)
-        return np.cos(x@a)
+        return np.cos(x @ a)
 
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
-    
+
     def v_true(self, x, t):
-        a = 1.0 * np.arange(1, self.d + 1)        
-        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
+        a = 1.0 * np.arange(1, self.d + 1)
+        return (self.T - t) * np.mean(np.where(x < 0, np.sin(x), x), axis=-1) + np.cos(x @ a)
 
 
 class Schloegl_SPDE():
     def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
         a, b = -1, 1 # interval of the PDE
-        s = np.linspace(a, b, d)    # gridpoints
+        s = np.linspace(a, b, d) # gridpoints
         nu = 1 # diffusion constant
         boundary = 'Neumann' # use 'Neumann' or "Dirichlet
         lambd = .1
-        if boundary== 'Dirichlet':
+        if boundary == 'Dirichlet':
             print('Dirichlet boundary')
-            h = (b-a) / (d+1)
-            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
+            h = (b - a) / (d + 1)
+            A = -2 * np.diag(np.ones(d), 0) + np.diag(np.ones(d - 1), 1) + np.diag(np.ones(d - 1), -1)
             A = nu / h**2 * A
-            Q = h*np.eye(d)
+            Q = h * np.eye(d)
         elif boundary== 'Neumann':
             print('Neumann boundary')
-            h = (b-a)/(d-1)             # step size in space
-            A = -2*np.diag(np.ones(d), 0) + np.diag(np.ones(d-1), 1) + np.diag(np.ones(d-1), -1)
-            A[0,1] = 2; A[d-1, d-2] = 2
+            h = (b - a) / (d - 1)             # step size in space
+            A = -2 * np.diag(np.ones(d), 0) + np.diag(np.ones(d - 1), 1) + np.diag(np.ones(d - 1), -1)
+            A[0, 1] = 2; A[d - 1, d - 2] = 2
             A = nu / h**2 * A
-            Q = h*np.eye(d)
-            Q[0,0] /=2; Q[d-1,d-1] /=2  # for neumann boundary
+            Q = h * np.eye(d)
+            Q[0, 0] /=2; Q[d - 1,d - 1] /= 2  # for neumann boundary
         else:
             print('Wrong boundary!')
         # _B = (np.bitwise_and(s > -0.4, s < 0.4))*1.0
         # B = np.zeros(shape=(d, 1))   
         # B[:, 0] = _B
         # A = -np.eye(d)
-        B = 0.25*np.eye(d)
+        B = 0.25 * np.eye(d)
         control_dim = B.shape[1]
         R = lambd * np.identity(control_dim)
         self.R_inv = np.linalg.inv(R)
@@ -277,14 +272,13 @@ class Schloegl_SPDE():
 
     def calc_u(self, t, x, grad):
         if len(x.shape) == 1:
-            return (-self.R_inv @ np.dot(grad, self.B)/2).T
+            return (-self.R_inv @ np.dot(grad, self.B) / 2).T
         else:
-            u_mat = np.tensordot(grad, self.B, axes=((0),(0)))
+            u_mat = np.tensordot(grad, self.B, axes=((0), (0)))
             return (-self.R_inv @ u_mat.T / 2).T
 
     def calc_grad_fixed_control(self, t, x):
         return 2*self.Pi @ x.T
-
 
     def b(self, x, t=0):
         if self.modus == 'pt':
@@ -292,33 +286,30 @@ class Schloegl_SPDE():
         ret = self.A.dot(x.T).T + self.NL(t, x) + (self.B @ self.calc_u(t, x, self.calc_grad_fixed_control(t, x)).T).T
         return ret
 
-
     def NL(self, t, x):
         return x**3
 
-
-    def b_variable_u(self, x, u , t=0):
+    def b_variable_u(self, x, u, t=0):
         if self.modus == 'pt':
             return pt.mm(self.A_pt, x.t()).t()
         ret = self.A.dot(x.T).T + (self.B @ u.T).T
         return ret
-
 
     def sigma(self, x):
         if self.modus == 'pt':
             return pt.tensor(self.B_pt)
         return self.B
 
-    def h( self, t, x, u, Du):
-        xtqx = np.einsum('li,ik,lk->l', x,self.Q,x)
+    def h(self, t, x, u, Du):
+        xtqx = np.einsum('li,ik,lk->l', x, self.Q, x)
         Btgradv = self.B.T @ Du.T
         baru = self.calc_u(t, x.T, self.calc_grad_fixed_control(t, x))
-        baruRbaru  = np.einsum('li,ik,lk->l', baru,self.R,baru)
+        baruRbaru = np.einsum('li,ik,lk->l', baru, self.R, baru)
         BtgradvRinvBtgradv = np.einsum('il,ik,kl->l', Btgradv, self.R_inv, Btgradv)
-        baruBtgradv  = np.einsum('li,il->l', baru, Btgradv)
+        baruBtgradv = np.einsum('li,il->l', baru, Btgradv)
         # return -(xtqx - 1/4*BtgradvRinvBtgradv - baruBtgradv + baruRbaru)
         # print('np.linalg.norm(xtqx)', np.linalg.norm(xtqx), 'np.linalg.norm(baruRbaru)', np.linalg.norm(baruRbaru))
-        return - xtqx - baruRbaru
+        return -xtqx - baruRbaru
 
     def g(self, x):
         if self.modus == 'pt':
@@ -326,16 +317,16 @@ class Schloegl_SPDE():
         if len(x.shape) == 1:
             return x.T @ self.Q @ x
         else:
-            return np.einsum('li,ik,lk->l', x,self.Q,x)
+            return np.einsum('li,ik,lk->l', x, self.Q, x)
         return 
 
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
-    
+
     def v_true(self, x, t):
         a = 1.0 * np.arange(1, self.d + 1)        
-        return (self.T-t) * np.mean(np.where(x < 0,  np.sin(x),x), axis=-1) + np.cos(x@a)
+        return (self.T - t) * np.mean(np.where(x < 0, np.sin(x), x), axis=-1) + np.cos(x @ a)
 
 
 
@@ -356,7 +347,7 @@ class BondpriceMultidim():
         self.name = name
         self.d = d
         self.T = T
-        self.X_0 = np.ones(self.d)
+        self.X_0 = 0 * np.ones(self.d)
         self.sigma_modus = 'variable'
 
     def b(self, x):
@@ -420,6 +411,7 @@ class BondpriceMultidim():
 
     # returns: PDE_loss at every sample point
     # returns is a vector \in samples
+
     def pde_loss(self, t, x, v, vt, vx, vxx):
         assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
         assert len(v.shape) == 1
@@ -443,10 +435,9 @@ class BondpriceMultidim():
         # hess_part = vxx * 
 
         # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(Sdotsqrtxnext * vxx, axis = (1,2))) - np.max(x, axis=1) * v
-        loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(sigmaTsigma * vxx, axis = (1,2))) - np.max(x, axis=1) * v
+        loss = vt + np.einsum('il,il->i', self.A * (self.B - x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) - np.max(x, axis=1) * v
         # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(sigma * vxx, axis = (1,2))) - np.max(x, axis=1) * v
         return loss
 
 
         # print('in pdeloss, done')
-

@@ -1,3 +1,5 @@
+#pylint: disable=invalid-name
+
 import numpy as np
 import torch as pt
 
@@ -15,7 +17,7 @@ def get_X_process(problem, K, delta_t, seed=42):
     '''
 
     np.random.seed(seed)
-    
+
     N = int(np.ceil(problem.T / delta_t))
     sq_delta_t = np.sqrt(delta_t)
 
@@ -55,7 +57,7 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
     if problem.modus == 'pt':
         X = pt.autograd.Variable(pt.tensor(X).float(), requires_grad=True)
     else:
-        X = X.transpose((2, 1, 0)) 
+        X = X.transpose((2, 1, 0))
 
     avg_loss = []
 
@@ -73,7 +75,7 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
             v_of_x = Y_n[n](X_n) # K x 1
 
             Y_eval = v_of_x.squeeze().sum()
-            Y_eval.backward(retain_graph=True) 
+            Y_eval.backward(retain_graph=True)
             v_x, = pt.autograd.grad(Y_eval, X_n, create_graph=True) # K x d
             v_t = (Y_n[n + 1](X_n) - v_of_x) / delta_t
 
