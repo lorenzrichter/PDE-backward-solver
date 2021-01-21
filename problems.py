@@ -134,8 +134,8 @@ class AllenKahn():
     def b(self, x):
         if self.modus == 'pt':
             return pt.zeros(x.shape)
-        return 0
-        # return np.zeros(x.shape)
+        # return 0
+        return np.zeros(x.shape)
 
     def sigma(self, x):
         if self.modus == 'pt':
@@ -157,6 +157,27 @@ class AllenKahn():
     def v_true(self, x, t):
         print('no reference solution known')
         return 0
+
+
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None,:,:] * vxx, axis = (1,2))) + self.h(t, x, v, vx)
+        return loss
 
 
 class UnboundedSin():
@@ -215,6 +236,27 @@ class UnboundedSin():
     def v_true(self, x, t):
         a = 1.0 * np.arange(1, self.d + 1)
         return (self.T - t) * np.mean(np.where(x < 0, np.sin(x), x), axis=-1) + np.cos(x @ a)
+
+
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None,:,:] * vxx, axis = (1,2))) + self.h(t, x, v, vx)
+        return loss
 
 
 class Schloegl_SPDE():
@@ -328,6 +370,25 @@ class Schloegl_SPDE():
         a = 1.0 * np.arange(1, self.d + 1)        
         return (self.T - t) * np.mean(np.where(x < 0, np.sin(x), x), axis=-1) + np.cos(x @ a)
 
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None,:,:] * vxx, axis = (1,2))) + self.h(t, x, v, vx)
+        return loss
 
 
 class BondpriceMultidim():
@@ -408,10 +469,8 @@ class BondpriceMultidim():
     # vt \in samples            is time derivative of v at t, x
     # vx \in samples x d        is gradient of v w.r.t x at t, x
     # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
-
     # returns: PDE_loss at every sample point
     # returns is a vector \in samples
-
     def pde_loss(self, t, x, v, vt, vx, vxx):
         assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
         assert len(v.shape) == 1
@@ -420,24 +479,5 @@ class BondpriceMultidim():
         sigma = self.sigma(x)
         assert sigma.shape == (x.shape[0], self.d, self.d)
         sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        # print('sigma',sigma)
-        # print('sigmaTsigma', sigmaTsigma)
-        # print('vt', vt)
-        # print('A B x dot vx', np.einsum('il,il->i', self.A*(self.B-x), vx))
-        # print('sigma vxx', 1/2*(np.sum(sigma * vxx, axis = (1,2))))
-        # print('v', v)
-        # print('max x dot v', np.max(x, axis=1) * v)
-        # sqrtx = np.sqrt(np.abs(x))
-        # Sdotsqrtx = np.einsum('i,ji->ji', self.S, sqrtx)
-        # Sdotsqrtxnext = np.einsum('ij, il->ijl', Sdotsqrtx, Sdotsqrtx)
-        # print('Sdotsqrtxnext.shape', Sdotsqrtxnext.shape, vxx.shape)
-        # Sdotsqrtxnext = Sdotsqrtx @ Sdotsqrtx
-        # hess_part = vxx * 
-
-        # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(Sdotsqrtxnext * vxx, axis = (1,2))) - np.max(x, axis=1) * v
-        loss = vt + np.einsum('il,il->i', self.A * (self.B - x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) - np.max(x, axis=1) * v
-        # loss = vt + np.einsum('il,il->i', self.A*(self.B-x), vx) + 1/2*(np.sum(sigma * vxx, axis = (1,2))) - np.max(x, axis=1) * v
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, vx)
         return loss
-
-
-        # print('in pdeloss, done')
