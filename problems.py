@@ -8,6 +8,9 @@ from scipy.linalg import expm
 from scipy.linalg import solve_continuous_are
 
 
+device = pt.device('cuda' if pt.cuda.is_available() else 'cpu')
+
+
 class LLGC():
     '''
         Ornstein-Uhlenbeck with linear terminal costs.
@@ -125,21 +128,21 @@ class AllenKahn():
         self.d = d
         self.T = T
         self.B = np.eye(self.d) * np.sqrt(2)
-        self.B_pt = pt.tensor(self.B).float()
+        self.B_pt = pt.tensor(self.B).float().to(device)
         self.alpha = np.ones([self.d, 1]) # not needed, can delete?
-        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float().to(device) # not needed, can delete?
         self.X_0 = np.zeros(self.d)
         self.sigma_modus = 'constant'
 
     def b(self, x):
         if self.modus == 'pt':
-            return pt.zeros(x.shape)
+            return pt.zeros(x.shape).to(device)
         # return 0
         return np.zeros(x.shape)
 
     def sigma(self, x):
         if self.modus == 'pt':
-            return pt.tensor(self.B_pt)
+            return self.B_pt
         return self.B
 
     def h(self, t, x, y, z):
@@ -147,7 +150,7 @@ class AllenKahn():
 
     def g(self, x):
         if self.modus == 'pt':
-            return 1 / (2 + 2 / 5 * pt.norm(x, 1)**2)
+            return 1 / (2 + 2 / 5 * pt.sum(x**2, 1)**2)
         return 1 / (2 + 2 / 5 * np.linalg.norm(x, axis=1)**2)
 
     def u_true(self, x, t):
@@ -176,7 +179,7 @@ class AllenKahn():
         assert sigma.shape == (self.d, self.d)
         sigmaTsigma = sigma.T @ sigma
         # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None,:,:] * vxx, axis = (1,2))) + self.h(t, x, v, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, vx)
         return loss
 
 
@@ -189,43 +192,55 @@ class UnboundedSin():
         self.d = d
         self.T = T
         self.B = 1 / np.sqrt(self.d) * np.eye(self.d)
-        self.B_pt = pt.tensor(self.B).float()
+        self.B_pt = pt.tensor(self.B).float().to(device)
         self.alpha = np.ones([self.d, 1]) # not needed, can delete?
-        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
+        self.alpha_pt = pt.tensor(self.alpha).float().to(device) # not needed, can delete?
         self.X_0 = 0.5 * np.ones(self.d)
         self.rescal = 0.5
-        self.Sig = self.B[0,0]
+        self.Sig = self.B[0, 0]
+        self.Sig_pt = self.B_pt[0, 0]
+        self.sigma_modus = 'constant'
 
     def b(self, x):
         if self.modus == 'pt':
-            return pt.zeros(x.shape)
+            return pt.zeros(x.shape).to(device)
         return 0
         # return np.zeros(x.shape)
 
     def sigma(self, x):
         if self.modus == 'pt':
-            return pt.tensor(self.B_pt)
+            return self.B_pt
         return self.B
 
     def h(self, t, x, u, Du):
-        # u time derivative
-        Ut = - np.mean(np.where(x < 0,  np.sin(x), x), axis=-1)
-        # u value
-        xSum = x @ np.arange(1., self.d + 1.)
-        cosU = np.cos(xSum)
-        UVal = -(self.T - t) * Ut + cosU
-        # U X derivarive (sum)
-        DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
-        # sum of diag of Hessian
-        D2UVal = -cosU* self.d*(self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0, np.sin(x), np.zeros(np.shape(x))), axis=-1)
+        if self.modus == 'pt':
+            Ut = - pt.mean(pt.where(x < 0, pt.sin(x), x), 1)
+            xSum = x @ pt.arange(1., self.d + 1.).to(device)
+            cosU = pt.cos(xSum)
+            UVal = -(self.T - t) * Ut + cosU
+            DUVal = (self.T - t) * pt.mean(pt.where(x < 0, pt.cos(x), pt.ones(x.shape).to(device)), 1) - self.d * (self.d + 1.) / 2. * pt.sin(xSum)
+            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * pt.mean(pt.where(x < 0,  pt.sin(x), pt.zeros(x.shape).to(device)), 1)
+            ret =  - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float().to(device)) * u.squeeze() * pt.sum(Du, 1))
+        else:
+            # u time derivative
+            Ut = - np.mean(np.where(x < 0,  np.sin(x), x), axis=-1)
+            # u value
+            xSum = x @ np.arange(1., self.d + 1.)
+            cosU = np.cos(xSum)
+            UVal = -(self.T - t) * Ut + cosU
+            # U X derivarive (sum)
+            DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
+            # sum of diag of Hessian
+            D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0, np.sin(x), np.zeros(np.shape(x))), axis=-1)
 
-        # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
-        ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
+            # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
+            ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
         return  ret.squeeze()
 
     def g(self, x):
         if self.modus == 'pt':
-            return 0
+            a = pt.arange(1, self.d + 1).float().unsqueeze(1).to(device)
+            return pt.mm(x, a).squeeze()
         a = 1.0 * np.arange(1, self.d + 1)
         return np.cos(x @ a)
 
@@ -255,7 +270,7 @@ class UnboundedSin():
         assert sigma.shape == (self.d, self.d)
         sigmaTsigma = sigma.T @ sigma
         # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None,:,:] * vxx, axis = (1,2))) + self.h(t, x, v, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, vx)
         return loss
 
 
