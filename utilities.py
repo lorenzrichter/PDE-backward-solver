@@ -1,5 +1,6 @@
 #pylint: disable=invalid-name
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch as pt
 
@@ -108,3 +109,41 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
         problem.modus = problem_modus_temp
 
     return avg_loss
+
+
+def plot_NN_evaluation(model, n, n_start=0):
+
+    print('d = %d' % model.problem.d)
+    Y_0_true = model.problem.v_true(model.problem.X_0[np.newaxis, :], 0)
+    Y_0_est = model.Y_n[0](pt.tensor(model.problem.X_0).float().unsqueeze(0)).detach().numpy()
+    print('Y_0 true:   %.5f' % Y_0_true)
+    print('Y_0 est:    %.5f' % Y_0_est)
+    print('rel error:  %.5f' % np.abs((Y_0_true - Y_0_est) / Y_0_true))
+
+    model.problem.modus = 'np'
+    X, xi = get_X_process(model.problem, model.K, model.delta_t)
+    model.problem.modus = 'pt'
+    X = pt.tensor(X).float()
+
+    fig, ax = plt.subplots(2, 3, figsize=(20, 10))
+
+    ax[0, 0].plot([item for sublist in model.loss_log for item in sublist])
+    ax[0, 0].set_yscale('log')
+    ax[0, 1].set_title('n = %d/%d' % (n, model.N))
+    ax[0, 1].plot(model.loss_log[model.N - n - 1])
+    ax[0, 1].set_yscale('log')
+    X_val = pt.linspace(0, 1, 500).unsqueeze(1).repeat(1, model.problem.d)
+    ax[1, 0].set_title('n = %d/%d' % (n, model.N))
+    ax[1, 0].plot(X_val.numpy()[:, 0], model.Y_n[n](X_val).detach().numpy())
+    ax[1, 0].plot(X_val.numpy()[:, 0], model.problem.v_true(X_val.numpy(), n * model.delta_t).squeeze())
+
+    ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().numpy(), model.Y_n[n](X[n, :, :]).detach().numpy(), s=0.5)
+    ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().numpy(), model.problem.v_true(X[n, :, :].detach().numpy(), n * model.delta_t).squeeze(), s=0.5);
+
+    x = pt.tensor(model.problem.X_0).unsqueeze(0).float()
+    t_val = np.linspace(0, model.problem.T, model.N + 1)
+    ax[1, 2].set_title('x = %.2f' % x[0, 0])
+    ax[1, 2].plot(t_val[n_start:], [y_n(x).item() for y_n in model.Y_n[n_start:]])
+    ax[1, 2].plot(t_val[n_start:], [model.problem.v_true(x.numpy(), t) for t in t_val[n_start:]])
+
+    return fig

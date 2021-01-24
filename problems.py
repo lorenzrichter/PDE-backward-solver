@@ -8,7 +8,7 @@ from scipy.linalg import expm
 from scipy.linalg import solve_continuous_are
 
 
-device = pt.device('cuda' if pt.cuda.is_available() else 'cpu')
+device = 'cpu'  # pt.device('cuda' if pt.cuda.is_available() else 'cpu')
 
 
 class LLGC():
@@ -150,7 +150,7 @@ class AllenKahn():
 
     def g(self, x):
         if self.modus == 'pt':
-            return 1 / (2 + 2 / 5 * pt.sum(x**2, 1)**2)
+            return 1 / (2 + 2 / 5 * pt.sum(x**2, 1))
         return 1 / (2 + 2 / 5 * np.linalg.norm(x, axis=1)**2)
 
     def u_true(self, x, t):
@@ -184,7 +184,7 @@ class AllenKahn():
 
 
 class UnboundedSin():
-    def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+    def __init__(self, name='UnboundedSin', d=1, T=1, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.modus = modus
@@ -193,8 +193,6 @@ class UnboundedSin():
         self.T = T
         self.B = 1 / np.sqrt(self.d) * np.eye(self.d)
         self.B_pt = pt.tensor(self.B).float().to(device)
-        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
-        self.alpha_pt = pt.tensor(self.alpha).float().to(device) # not needed, can delete?
         self.X_0 = 0.5 * np.ones(self.d)
         self.rescal = 0.5
         self.Sig = self.B[0, 0]
@@ -220,7 +218,7 @@ class UnboundedSin():
             UVal = -(self.T - t) * Ut + cosU
             DUVal = (self.T - t) * pt.mean(pt.where(x < 0, pt.cos(x), pt.ones(x.shape).to(device)), 1) - self.d * (self.d + 1.) / 2. * pt.sin(xSum)
             D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * pt.mean(pt.where(x < 0,  pt.sin(x), pt.zeros(x.shape).to(device)), 1)
-            ret =  - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float().to(device)) * u.squeeze() * pt.sum(Du, 1))
+            ret = - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float().to(device)) * u.squeeze() * pt.sum(Du, 1))
         else:
             # u time derivative
             Ut = - np.mean(np.where(x < 0,  np.sin(x), x), axis=-1)
@@ -234,13 +232,13 @@ class UnboundedSin():
             D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0, np.sin(x), np.zeros(np.shape(x))), axis=-1)
 
             # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
-            ret =  - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
+            ret = - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
         return  ret.squeeze()
 
     def g(self, x):
         if self.modus == 'pt':
             a = pt.arange(1, self.d + 1).float().unsqueeze(1).to(device)
-            return pt.mm(x, a).squeeze()
+            return pt.cos(pt.mm(x, a).squeeze())
         a = 1.0 * np.arange(1, self.d + 1)
         return np.cos(x @ a)
 
