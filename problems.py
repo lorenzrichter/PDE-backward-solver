@@ -202,8 +202,8 @@ class UnboundedSin():
     def b(self, x):
         if self.modus == 'pt':
             return pt.zeros(x.shape).to(device)
-        return 0
-        # return np.zeros(x.shape)
+        # return 0
+        return np.zeros(x.shape)
 
     def sigma(self, x):
         if self.modus == 'pt':
