@@ -179,7 +179,7 @@ class AllenKahn():
         assert sigma.shape == (self.d, self.d)
         sigmaTsigma = sigma.T @ sigma
         # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
         return loss
 
 
@@ -267,8 +267,7 @@ class UnboundedSin():
         sigma = self.sigma(x)
         assert sigma.shape == (self.d, self.d)
         sigmaTsigma = sigma.T @ sigma
-        # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
         return loss
 
 
@@ -400,7 +399,7 @@ class Schloegl_SPDE():
         assert sigma.shape == (self.d, self.d)
         sigmaTsigma = sigma.T @ sigma
         # sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis=(1,2))) + self.h(t, x, v, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis=(1,2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
         return loss
 
 
@@ -492,5 +491,6 @@ class BondpriceMultidim():
         sigma = self.sigma(x)
         assert sigma.shape == (x.shape[0], self.d, self.d)
         sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, vx)
+        z = np.einsum('ikj,ik->ij', sigma, vx)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, z)
         return loss
