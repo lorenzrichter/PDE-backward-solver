@@ -38,8 +38,8 @@ class NNSolver():
 
         self.problem.modus = 'pt'
 
-        X = pt.autograd.Variable(pt.tensor(X).float(), requires_grad=True)
-        xi = pt.tensor(xi).float()
+        X = pt.autograd.Variable(pt.tensor(X).float(), requires_grad=True).to(device)
+        xi = pt.tensor(xi).float().to(device)
 
         for n in range(self.N - 1, -1, -1):
 
@@ -56,22 +56,30 @@ class NNSolver():
 
                 X_n = X[n, batch, :]
                 X_n_1 = X[n + 1, batch, :]
-                Y_eval = self.Y_n[n](X_n).squeeze().sum()
-                Y_eval.backward(retain_graph=True)
-                Z_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
-                sigma_Z_n = pt.mm(self.problem.sigma(X_n).t(), Z_n.t()).t()
 
-                self.Y_n[n].zero_grad()
+
                 #loss = pt.mean((Y_n[n + 1](X_n_1).squeeze() - Y_n[n](X_n).squeeze() 
                 #                + problem.h(n * delta_t, X_n, Y_n[n + 1](X_n_1).squeeze(), sigma_Z_n) * delta_t
                 #                - pt.sum(sigma_Z_n * xi[n + 1, batch, :], 1) * sq_delta_t)**2)
-                loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
-                                + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), sigma_Z_n) * self.delta_t
-                                - pt.sum(sigma_Z_n * xi[n + 1, batch, :], 1) * self.sq_delta_t)**2)
+                if self.method == 'implicit':
+                    Y_eval = self.Y_n[n](X_n).squeeze().sum()
+                    Y_eval.backward(retain_graph=True)
+                    Z_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
+                    sigma_Z_n = pt.mm(self.problem.sigma(X_n).t(), Z_n.t()).t()
 
-                #loss = pt.mean((Y_n[n + 1](X[n + 1, :, :]).squeeze() - Y_n[n](X[n, :, :]).squeeze() 
-                #               + problem.h(n * delta_t, X[n, :, :], Y_n[n + 1](X[n + 1, :, :]).squeeze(), sigma_Z_n.detach()) * delta_t)**2)
+                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
+                                    + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), sigma_Z_n) * self.delta_t
+                                    - pt.sum(sigma_Z_n * xi[n + 1, batch, :], 1) * self.sq_delta_t)**2)
 
+                elif self.method == 'explicit':
+                    Y_eval = self.Y_n[n + 1](X_n_1).squeeze().sum()
+                    Y_eval.backward(retain_graph=True)
+                    Z_n_1, = pt.autograd.grad(Y_eval, X_n_1, create_graph=True)
+                    sigma_Z_n_1 = pt.mm(self.problem.sigma(X_n_1).t(), Z_n_1.t()).t()
+                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
+                                    + self.problem.h((n + 1) * self.delta_t, X_n_1, self.Y_n[n + 1](X_n_1).squeeze(), sigma_Z_n_1) * self.delta_t)**2)
+
+                self.Y_n[n].zero_grad()
                 loss.backward(retain_graph=True)
                 self.Y_n[n].optim.step()
 

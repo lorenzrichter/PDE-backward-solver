@@ -7,6 +7,9 @@ import torch as pt
 from pytorch_future import hessian
 
 
+device = pt.device('cpu')
+
+
 def get_X_process(problem, K, delta_t, seed=42):
     '''
     :param problem: problem object that specifies the PDE problem
@@ -44,7 +47,7 @@ def get_X_process(problem, K, delta_t, seed=42):
     return X, xi
 
 
-def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde=None, seed=42):
+def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde=None, seed=44, print_every=None):
 
     N = int(np.ceil(problem.T / delta_t))
 
@@ -108,22 +111,26 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
 
         problem.modus = problem_modus_temp
 
+        if print_every is not None:
+            if n % print_every == 0:
+                print(n)
+
     return avg_loss
 
 
 def plot_NN_evaluation(model, n, n_start=0, reference_solution=True, Y_0_true=None):
     
     model.problem.modus = 'np'
-    X, xi = get_X_process(model.problem, model.K, model.delta_t, seed=43)
+    X, xi = get_X_process(model.problem, model.K, model.delta_t, seed=44)
     model.problem.modus = 'pt'
-    X = pt.tensor(X).float()
+    X = pt.tensor(X).float().to(device)
 
     if Y_0_true is None:
         Y_0_true = model.problem.v_true(model.problem.X_0[np.newaxis, :], 0)
-        ref_loss = np.mean([np.mean((model.Y_n[n](X[n, :, :]).squeeze().detach().numpy() 
-                         - model.problem.v_true(X[n, :, :].detach().numpy(), n * model.delta_t))**2) for n in range(model.N + 1)])
+        ref_loss = np.mean([np.mean((model.Y_n[n](X[n, :, :]).squeeze().detach().cpu().numpy() 
+                         - model.problem.v_true(X[n, :, :].detach().cpu().numpy(), n * model.delta_t))**2) for n in range(model.N + 1)])
 
-    Y_0_est = model.Y_n[0](pt.tensor(model.problem.X_0).float().unsqueeze(0)).detach().numpy()
+    Y_0_est = model.Y_n[0](pt.tensor(model.problem.X_0).to(device).float().unsqueeze(0)).detach().cpu().numpy()
     print('d = %d' % model.problem.d)
     print('Y_0 true:   %.5f' % Y_0_true)
     print('Y_0 est:    %.5f' % Y_0_est)
@@ -144,21 +151,21 @@ def plot_NN_evaluation(model, n, n_start=0, reference_solution=True, Y_0_true=No
 
     1.1 * pt.min(X[n, :, 0])
 
-    X_val = pt.linspace(1.1 * pt.min(X[n, :, 0]), 0.9 * pt.max(X[n, :, 0]), 500).unsqueeze(1).repeat(1, model.problem.d)
+    X_val = pt.linspace(1.1 * pt.min(X[n, :, 0]), 0.9 * pt.max(X[n, :, 0]), 500).unsqueeze(1).repeat(1, model.problem.d).to(device)
     ax[1, 0].set_title('n = %d/%d' % (n, model.N))
-    ax[1, 0].plot(X_val.numpy()[:, 0], model.Y_n[n](X_val).detach().numpy())
+    ax[1, 0].plot(X_val.cpu().numpy()[:, 0], model.Y_n[n](X_val).detach().cpu().numpy())
     if reference_solution:
-        ax[1, 0].plot(X_val.numpy()[:, 0], model.problem.v_true(X_val.numpy(), n * model.delta_t).squeeze())
+        ax[1, 0].plot(X_val.cpu().numpy()[:, 0], model.problem.v_true(X_val.cpu().numpy(), n * model.delta_t).squeeze())
 
-    ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().numpy(), model.Y_n[n](X[n, :, :]).detach().numpy(), s=0.5)
+    ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().cpu().numpy(), model.Y_n[n](X[n, :, :]).detach().cpu().numpy(), s=0.5)
     if reference_solution:
-        ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().numpy(), model.problem.v_true(X[n, :, :].detach().numpy(), n * model.delta_t).squeeze(), s=0.5);
+        ax[1, 1].scatter(pt.sum(X[n, :, :]**2, 1).detach().cpu().numpy(), model.problem.v_true(X[n, :, :].detach().cpu().numpy(), n * model.delta_t).squeeze(), s=0.5);
 
-    x = pt.tensor(model.problem.X_0).unsqueeze(0).float()
+    x = pt.tensor(model.problem.X_0).unsqueeze(0).float().to(device)
     t_val = np.linspace(0, model.problem.T, model.N + 1)
     ax[1, 2].set_title('x = %.2f' % x[0, 0])
     ax[1, 2].plot(t_val[n_start:], [y_n(x).item() for y_n in model.Y_n[n_start:]])
     if reference_solution:
-        ax[1, 2].plot(t_val[n_start:], [model.problem.v_true(x.numpy(), t) for t in t_val[n_start:]])
+        ax[1, 2].plot(t_val[n_start:], [model.problem.v_true(x.cpu().numpy(), t) for t in t_val[n_start:]])
 
     return fig
