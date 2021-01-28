@@ -65,7 +65,11 @@ class NNSolver():
                     Y_eval = self.Y_n[n](X_n).squeeze().sum()
                     Y_eval.backward(retain_graph=True)
                     Z_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
-                    sigma_Z_n = pt.mm(self.problem.sigma(X_n).t(), Z_n.t()).t()
+                    if self.problem.sigma_modus == 'variable':
+                        sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n).detach().cpu().numpy(), [0, 2, 1]))
+                        sigma_Z_n = pt.bmm(sigma_transpose, Z_n.unsqueeze(2)).squeeze(2)
+                    else:
+                        sigma_Z_n = pt.mm(self.problem.sigma(X_n).t(), Z_n.t()).t()
 
                     loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
                                     + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), sigma_Z_n) * self.delta_t
@@ -75,7 +79,11 @@ class NNSolver():
                     Y_eval = self.Y_n[n + 1](X_n_1).squeeze().sum()
                     Y_eval.backward(retain_graph=True)
                     Z_n_1, = pt.autograd.grad(Y_eval, X_n_1, create_graph=True)
-                    sigma_Z_n_1 = pt.mm(self.problem.sigma(X_n_1).t(), Z_n_1.t()).t()
+                    if self.problem.sigma_modus == 'variable':
+                        sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n_1).detach().cpu().numpy(), [0, 2, 1])).to(device)
+                        sigma_Z_n_1 = pt.bmm(sigma_transpose, Z_n.unsqueeze(2)).squeeze(2)
+                    else:
+                        sigma_Z_n_1 = pt.mm(self.problem.sigma(X_n_1).t(), Z_n_1.t()).t()
                     loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
                                     + self.problem.h((n + 1) * self.delta_t, X_n_1, self.Y_n[n + 1](X_n_1).squeeze(), sigma_Z_n_1) * self.delta_t)**2)
 

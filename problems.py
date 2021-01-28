@@ -408,25 +408,24 @@ class BondpriceMultidim():
 
         np.random.seed(seed)
         self.A = np.random.uniform(size=d)
-        self.A_pt = pt.tensor(self.A).float()
+        self.A_pt = pt.tensor(self.A).float().to(device)
         self.B = np.random.uniform(size=d)
-        self.B_pt = pt.tensor(self.B).float()
+        self.B_pt = pt.tensor(self.B).float().to(device)
         self.S_vec = np.random.uniform(size=d)
-        self.S_vec_pt = pt.tensor(self.S_vec).float()
+        self.S_vec_pt = pt.tensor(self.S_vec).float().to(device)
         self.S = np.zeros((d, d))
         self.S[:, 0] = self.S_vec
-        self.S_pt = pt.tensor(self.S).float()
+        self.S_pt = pt.tensor(self.S).float().to(device)
         self.modus = modus
         self.name = name
         self.d = d
         self.T = T
-        self.X_0 = 0 * np.ones(self.d)
+        self.X_0 = np.ones(self.d)
         self.sigma_modus = 'variable'
 
     def b(self, x):
         if self.modus == 'pt':
             return (self.A_pt * (self.B_pt - x)).reshape(-1, self.d)
-            # return pt.zeros(x.shape)
         return (self.A * (self.B - x)).reshape(-1, self.d)
 
 
@@ -434,7 +433,7 @@ class BondpriceMultidim():
 
         if self.modus == 'pt':
             sqrtx = pt.sqrt(pt.abs(x))
-            ret = pt.zeros((x.shape[0], self.S_vec.size, self.S_vec.size))
+            ret = pt.zeros((x.shape[0], self.S_vec.size, self.S_vec.size)).to(device)
             # Sdotsqrtx = np.einsum('i,ji->ji', self.S_vec, sqrtx)
             Sdotsqrtx = self.S_vec_pt * sqrtx
             ret[:, :, 0] = Sdotsqrtx
@@ -463,7 +462,7 @@ class BondpriceMultidim():
 
     def g(self, x):
         if self.modus == 'pt':
-            return pt.ones((x.shape[0])).squeeze()
+            return pt.ones((x.shape[0])).to(device)
         return np.ones((x.shape[0])).squeeze()
 
 
@@ -491,6 +490,5 @@ class BondpriceMultidim():
         sigma = self.sigma(x)
         assert sigma.shape == (x.shape[0], self.d, self.d)
         sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
-        z = np.einsum('ikj,ik->ij', sigma, vx)
-        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, z)
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, vx)
         return loss
