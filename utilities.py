@@ -59,7 +59,7 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
     problem.modus = problem_modus_temp
 
     if problem.modus == 'pt':
-        X = pt.autograd.Variable(pt.tensor(X).float(), requires_grad=True)
+        X = pt.autograd.Variable(pt.tensor(X).float(), requires_grad=True).to(device)
     else:
         X = X.transpose((2, 1, 0))
 
@@ -87,11 +87,11 @@ def compute_PDE_loss(problem, delta_t=0.01, K=1000, Y_n=None, vfun=None, testOde
             for i, x in enumerate(X_n):
                 v_xx[i, :, :] = hessian(Y_n[n], x.unsqueeze(0), create_graph=True).squeeze()
 
-            v_of_x = v_of_x.squeeze().detach().numpy()
-            v_x = v_x.detach().numpy()
-            v_t = v_t.detach().squeeze().numpy()
-            v_xx = v_xx.detach().numpy()
-            X_n = X_n.detach().numpy()
+            v_of_x = v_of_x.squeeze().detach().cpu().numpy()
+            v_x = v_x.detach().cpu().numpy()
+            v_t = v_t.detach().squeeze().cpu().numpy()
+            v_xx = v_xx.detach().cpu().numpy()
+            X_n = X_n.detach().cpu().numpy()
 
         else:
             v_of_x = vfun.eval_V(t_n, X_n).T
@@ -125,7 +125,7 @@ def plot_NN_evaluation(model, n, n_start=0, reference_solution=True, Y_0_true=No
     model.problem.modus = 'pt'
     X = pt.tensor(X).float().to(device)
 
-    if Y_0_true is None:
+    if Y_0_true is None and reference_solution:
         Y_0_true = model.problem.v_true(model.problem.X_0[np.newaxis, :], 0)
         ref_loss = np.mean([np.mean((model.Y_n[n](X[n, :, :]).squeeze().detach().cpu().numpy() 
                          - model.problem.v_true(X[n, :, :].detach().cpu().numpy(), n * model.delta_t))**2) for n in range(model.N + 1)])

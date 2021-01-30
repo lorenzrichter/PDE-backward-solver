@@ -492,3 +492,66 @@ class BondpriceMultidim():
         sigmaTsigma = np.einsum('ij,ik->ijk', sigma[:, :, 0], sigma[:, :, 0])
         loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma * vxx, axis = (1, 2))) + self. h(t, x, v, vx)
         return loss
+
+
+class HJB():
+    def __init__(self, name='HJB', d=1, T=1, seed=42, modus='np'):
+
+        np.random.seed(seed)
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B = np.sqrt(2.0) * np.eye(self.d)
+        self.B_pt = pt.tensor(self.B).float().to(device)
+        self.X_0 = np.zeros(self.d)
+        self.sigma_modus = 'constant'
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return pt.zeros(x.shape).to(device)
+        return np.zeros(x.shape)
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return self.B_pt
+        return self.B
+
+    def h(self, t, x, y, z):
+        if self.modus == 'pt':
+            return -0.5 * pt.sum(z**2, 1)
+        else:
+            return -0.5 * np.sum(z**2, 1)
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return pt.log(0.5 + 0.5 * pt.sum(x**2, 1))
+        return log(0.5 + 0.5 * np.sum(x**2, 1))
+
+    def u_true(self, x, t):
+        print('no reference solution known')
+        return 0
+
+    def v_true(self, x, t):
+        print('no reference solution known')
+        return 0
+
+
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
+        return loss

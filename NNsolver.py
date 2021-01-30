@@ -64,28 +64,28 @@ class NNSolver():
                 if self.method == 'implicit':
                     Y_eval = self.Y_n[n](X_n).squeeze().sum()
                     Y_eval.backward(retain_graph=True)
-                    Z_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
+                    grad_Y_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
                     if self.problem.sigma_modus == 'variable':
                         sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n).detach().cpu().numpy(), [0, 2, 1]))
-                        sigma_Z_n = pt.bmm(sigma_transpose, Z_n.unsqueeze(2)).squeeze(2)
+                        Z_n = pt.bmm(sigma_transpose, grad_Y_n.unsqueeze(2)).squeeze(2)
                     else:
-                        sigma_Z_n = pt.mm(self.problem.sigma(X_n).t(), Z_n.t()).t()
+                        Z_n = pt.mm(self.problem.sigma(X_n).t(), grad_Y_n.t()).t()
 
                     loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
-                                    + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), sigma_Z_n) * self.delta_t
-                                    - pt.sum(sigma_Z_n * xi[n + 1, batch, :], 1) * self.sq_delta_t)**2)
+                                    + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), Z_n) * self.delta_t
+                                    - pt.sum(Z_n * xi[n + 1, batch, :], 1) * self.sq_delta_t)**2)
 
                 elif self.method == 'explicit':
                     Y_eval = self.Y_n[n + 1](X_n_1).squeeze().sum()
                     Y_eval.backward(retain_graph=True)
-                    Z_n_1, = pt.autograd.grad(Y_eval, X_n_1, create_graph=True)
+                    grad_Y_n_1, = pt.autograd.grad(Y_eval, X_n_1, create_graph=True)
                     if self.problem.sigma_modus == 'variable':
                         sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n_1).detach().cpu().numpy(), [0, 2, 1])).to(device)
-                        sigma_Z_n_1 = pt.bmm(sigma_transpose, Z_n.unsqueeze(2)).squeeze(2)
+                        Z_n_1 = pt.bmm(sigma_transpose, grad_Y_n_1.unsqueeze(2)).squeeze(2)
                     else:
-                        sigma_Z_n_1 = pt.mm(self.problem.sigma(X_n_1).t(), Z_n_1.t()).t()
-                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
-                                    + self.problem.h((n + 1) * self.delta_t, X_n_1, self.Y_n[n + 1](X_n_1).squeeze(), sigma_Z_n_1) * self.delta_t)**2)
+                        Z_n_1 = pt.mm(self.problem.sigma(X_n_1).t(), grad_Y_n_1.t()).t()
+                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze()
+                                    + self.problem.h((n + 1) * self.delta_t, X_n_1, self.Y_n[n + 1](X_n_1).squeeze(), Z_n_1) * self.delta_t)**2)
 
                 self.Y_n[n].zero_grad()
                 loss.backward(retain_graph=True)
