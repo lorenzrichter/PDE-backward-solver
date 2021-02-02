@@ -674,10 +674,21 @@ class DoubleWell():
         #self.u = 2 / beta * np.gradient(np.log(self.psi), self.dx, 1)
 
     def v_true_1(self, x, t):
-        i = np.floor((x.squeeze(0) + self.xb) / self.dx).long()
+        if x.shape[1] == 0:
+            return 0
+        i = np.floor((x.squeeze(0) + self.xb) / self.dx).astype(int)
         i[-1] -= 2
         n = int(np.ceil(t / self.delta_t))
         return np.array(- log(self.psi[n, i])).reshape([1, len(i)])
+        #self.u = 2 / beta * np.gradient(np.log(self.psi), self.dx, 1)
+
+    def v_true_2(self, x, t):
+        if x.shape[1] == 0:
+            return 0
+        i = np.floor((x.squeeze(0) + self.xb) / self.dx).astype(int)
+        i[-1] -= 2
+        n = int(np.ceil(t / self.delta_t))
+        return np.array(- log(self.psi_2[n, i])).reshape([1, len(i)])
 
     def u_true_1(self, x, t):
         x = x.unsqueeze(1)
@@ -754,7 +765,9 @@ class DoubleWell():
         #return interpolate.interp1d(self.xvec, self.u)(x)[:, n]
 
     def v_true(self, x, t):
-        return None
+        return np.sum(self.v_true_1(x[:, :self.d_1], t)) + np.sum(self.v_true_2(x[:, self.d_1:], t))
+        #return np.concatenate([self.v_true_1(x[:, i][:, np.newaxis], t).T for i in range(self.d_1)] + [self.v_true_2(x[:, i][:, np.newaxis],, t).T for i in range(self.d_1, self.d)], 1).T
+
 
     def u_true(self, x, t):
         return np.concatenate([self.u_true_1(x[:, i], t).T for i in range(self.d_1)] + [self.u_true_2(x[:, i], t).T for i in range(self.d_1, self.d)], 1).T
