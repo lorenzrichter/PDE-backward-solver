@@ -149,8 +149,6 @@ def plot_NN_evaluation(model, n, n_start=0, reference_solution=True, Y_0_true=No
     ax[0, 1].plot(model.loss_log[model.N - n - 1])
     ax[0, 1].set_yscale('log')
 
-    1.1 * pt.min(X[n, :, 0])
-
     X_val = pt.linspace(1.1 * pt.min(X[n, :, 0]), 0.9 * pt.max(X[n, :, 0]), 500).unsqueeze(1).repeat(1, model.problem.d).to(device)
     ax[1, 0].set_title('n = %d/%d' % (n, model.N))
     ax[1, 0].plot(X_val.cpu().numpy()[:, 0], model.Y_n[n](X_val).detach().cpu().numpy())

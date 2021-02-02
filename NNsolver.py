@@ -16,6 +16,7 @@ class NNSolver():
                  K_batch=1000, delta_t=0.01, print_every=500, method='implicit', seed=42):
         self.problem = problem
         self.name = name
+        self.seed = seed
         self.method = method
         self.K = K
         self.K_batch = K_batch
@@ -34,7 +35,7 @@ class NNSolver():
 
     def train(self):
 
-        X, xi = get_X_process(self.problem, self.K, self.delta_t)
+        X, xi = get_X_process(self.problem, self.K, self.delta_t, seed=self.seed)
 
         self.problem.modus = 'pt'
 
@@ -71,7 +72,7 @@ class NNSolver():
                     else:
                         Z_n = pt.mm(self.problem.sigma(X_n).t(), grad_Y_n.t()).t()
 
-                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze() 
+                    loss = pt.mean((self.Y_n[n + 1](X_n_1).squeeze() - self.Y_n[n](X_n).squeeze()
                                     + self.problem.h(n * self.delta_t, X_n, self.Y_n[n](X_n).squeeze(), Z_n) * self.delta_t
                                     - pt.sum(Z_n * xi[n + 1, batch, :], 1) * self.sq_delta_t)**2)
 

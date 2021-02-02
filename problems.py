@@ -4,7 +4,7 @@ import numpy as np
 import torch as pt
 
 from numpy import exp, log
-from scipy.linalg import expm
+from scipy.linalg import expm, solve_banded
 from scipy.linalg import solve_continuous_are
 
 
@@ -42,7 +42,7 @@ class LLGC():
 
     def sigma(self, x):
         if self.modus == 'pt':
-            return pt.tensor(self.B_pt)
+            return self.B_pt
         return self.B
 
     def h(self, t, x, y, z):
@@ -50,7 +50,7 @@ class LLGC():
             return -0.5 * pt.sum(z**2, dim=1)
         BTx = B.T @ x.T
         lx = x.T @ self.Q
-        return 
+        return
 
     def g(self, x):
         if self.modus == 'pt':
@@ -509,8 +509,8 @@ class HJB():
 
     def b(self, x):
         if self.modus == 'pt':
-            return pt.zeros(x.shape).to(device)
-        return np.zeros(x.shape)
+            return  0 * pt.ones(x.shape).to(device) # pt.zeros(x.shape).to(device) # 
+        return 0 * np.ones(x.shape) # np.zeros(x.shape) # 
 
     def sigma(self, x):
         if self.modus == 'pt':
@@ -555,3 +555,206 @@ class HJB():
         sigmaTsigma = sigma.T @ sigma
         loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
         return loss
+
+
+class DoubleWell():
+    '''
+        Multidimensional double well potential
+    '''
+    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np'):
+        self.name = name
+        self.d = d
+        self.d_1 = d_1
+        self.d_2 = d_2
+        self.T = T
+        self.eta = eta
+        self.eta_ = np.array([eta] * d_1 + [1.0] * d_2)
+        self.eta_pt = pt.tensor(self.eta_).to(device).float()
+        self.kappa = kappa
+        self.kappa_ = np.array([kappa] * d_1 + [1.0] * d_2)
+        self.kappa_pt = pt.tensor(self.kappa_).to(device).float()
+        self.B = np.eye(self.d)
+        self.B_pt = pt.tensor(self.B).to(device).float()
+        self.X_0 = -np.ones(self.d)
+        self.ref_sol_is_defined = False
+        self.sigma_modus = 'constant'
+        self.modus = modus
+
+    def V(self, x):
+        return self.kappa * (x**2 - 1)**2
+
+    def V_2(self, x):
+        return (x**2 - 1)**2
+
+    def grad_V(self, x):
+        if self.modus == 'pt':
+            return 4.0 * self.kappa_pt * (x * (x**2 - pt.ones(self.d).to(device)))
+        return 4.0 * self.kappa_ * (x * (x**2 - np.ones(self.d)))
+
+    def b(self, x):
+        return -self.grad_V(x)
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return self.B_pt
+        return self.B # self.B.repeat(x.shape[0], 1, 1)
+
+    def h(self, t, x, y, z):
+        if self.modus == 'pt':
+            return -0.5 * pt.sum(z**2, dim=1)
+        return -0.5 * np.sum(z**2, dim=1)
+
+    def g_1(self, x_1):
+        if self.modus == 'pt':
+            return self.eta_pt * (x_1 - 1)**2
+        return self.eta * (x_1 - 1)**2
+
+    def g_2(self, x_1):
+        return (x_1 - 1)**2
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return ((pt.sum(self.eta_pt * (x - pt.ones(self.d).to(device))**2, 1)))
+        return ((np.sum(self.eta_ * (x - np.ones(self.d))**2, 1)))
+
+    def compute_reference_solution(self, delta_t=0.005, xb=2.5, nx=1000):
+
+        self.xb = xb # range of x, [-xb, xb]
+        self.nx = nx # number of discrete interval
+        self.dx = 2.0 * self.xb / self.nx
+        self.delta_t = delta_t
+
+        beta = 2
+
+        self.xvec = np.linspace(-self.xb, self.xb, self.nx, endpoint=True)
+
+        # A = D^{-1} L D
+        # assumes Neumann boundary conditions
+
+        A = np.zeros([self.nx, self.nx])
+        for i in range(0, self.nx):
+
+            x = -self.xb + (i + 0.5) * self.dx
+            if i > 0:
+                x0 = -self.xb + (i - 0.5) * self.dx
+                x1 = -self.xb + i * self.dx
+                A[i, i - 1] = -exp(beta * 0.5 * (self.V(x0) + self.V(x) - 2 * self.V(x1))) / self.dx**2
+                A[i, i] = exp(beta * (self.V(x) - self.V(x1))) / self.dx**2
+            if i < self.nx - 1:
+                x0 = -self.xb + (i + 1.5) * self.dx
+                x1 = -self.xb + (i + 1) * self.dx
+                A[i, i + 1] = -exp(beta * 0.5 * (self.V(x0) + self.V(x) - 2 * self.V(x1))) / self.dx**2
+                A[i, i] = A[i, i] + exp(beta * (self.V(x) - self.V(x1))) / self.dx**2
+
+        A = -A / beta
+        N = int(self.T / self.delta_t)
+
+        D = np.diag(exp(beta * self.V(self.xvec) / 2))
+        D_inv = np.diag(exp(-beta * self.V(self.xvec) / 2))
+
+        np.linalg.cond(np.eye(self.nx) - self.delta_t * A)
+        #w, vv = np.linalg.eigh(np.eye(self.nx) - self.delta_t * A)
+
+        self.psi = np.zeros([N + 1, self.nx])
+        self.psi[N, :] = exp(-self.g_1(self.xvec))
+
+        for n in range(N - 1, -1, -1):
+            band = - self.delta_t * np.vstack([np.append([0], np.diagonal(A, offset=1)),
+                                               np.diagonal(A, offset=0) - N / self.T,
+                                               np.append(np.diagonal(A, offset=1), [0])])
+
+            self.psi[n, :] = D.dot(solve_banded([1, 1], band, D_inv.dot(self.psi[n + 1, :])))
+            #psi[n, :] = np.dot(D, np.linalg.solve(np.eye(self.nx) - delta_t * A, D_inv.dot(psi[n + 1, :])));
+
+
+        self.u = np.zeros([N + 1, self.nx - 1])
+        for n in range(N + 1):
+            for i in range(self.nx - 1):
+                self.u[n, i] = -2 / beta * self.B[0, 0] * (- log(self.psi[n, i + 1]) + log(self.psi[n, i])) / self.dx
+        #self.u = 2 / beta * np.gradient(np.log(self.psi), self.dx, 1)
+
+    def v_true_1(self, x, t):
+        i = np.floor((x.squeeze(0) + self.xb) / self.dx).long()
+        i[-1] -= 2
+        n = int(np.ceil(t / self.delta_t))
+        return np.array(- log(self.psi[n, i])).reshape([1, len(i)])
+
+    def u_true_1(self, x, t):
+        x = x.unsqueeze(1)
+        x = x.t()
+        i = np.floor((np.clip(x, -self.xb, self.xb - 2 * self.dx).squeeze(0) + self.xb) / self.dx).long()
+        i[-1] -= 2
+        n = int(np.ceil(t / self.delta_t))
+        return np.array(self.u[n, i]).reshape([1, len(i)])
+        #return interpolate.interp1d(self.xvec, self.u)(x)[:, n]
+        
+    def compute_reference_solution_2(self, delta_t=0.005, xb=2.5, nx=1000):
+
+        self.xb = xb # range of x, [-xb, xb]
+        self.nx = nx # number of discrete interval
+        self.dx = 2.0 * self.xb / self.nx
+        self.delta_t = delta_t
+
+        beta = 2
+
+        self.xvec = np.linspace(-self.xb, self.xb, self.nx, endpoint=True)
+
+        # A = D^{-1} L D
+        # assumes Neumann boundary conditions
+
+        A = np.zeros([self.nx, self.nx])
+        for i in range(0, self.nx):
+
+            x = -self.xb + (i + 0.5) * self.dx
+            if i > 0:
+                x0 = -self.xb + (i - 0.5) * self.dx
+                x1 = -self.xb + i * self.dx
+                A[i, i - 1] = -exp(beta * 0.5 * (self.V_2(x0) + self.V_2(x) - 2 * self.V_2(x1))) / self.dx**2
+                A[i, i] = exp(beta * (self.V_2(x) - self.V_2(x1))) / self.dx**2
+            if i < self.nx - 1:
+                x0 = -self.xb + (i + 1.5) * self.dx
+                x1 = -self.xb + (i + 1) * self.dx
+                A[i, i + 1] = -exp(beta * 0.5 * (self.V_2(x0) + self.V_2(x) - 2 * self.V_2(x1))) / self.dx**2
+                A[i, i] = A[i, i] + exp(beta * (self.V_2(x) - self.V_2(x1))) / self.dx**2
+
+        A = -A / beta
+        N = int(self.T / self.delta_t)
+
+        D = np.diag(exp(beta * self.V_2(self.xvec) / 2))
+        D_inv = np.diag(exp(-beta * self.V_2(self.xvec) / 2))
+
+        np.linalg.cond(np.eye(self.nx) - self.delta_t * A)
+        #w, vv = np.linalg.eigh(np.eye(self.nx) - self.delta_t * A)
+
+        self.psi_2 = np.zeros([N + 1, self.nx])
+        self.psi_2[N, :] = exp(-self.g_2(self.xvec))
+
+        for n in range(N - 1, -1, -1):
+            band = - self.delta_t * np.vstack([np.append([0], np.diagonal(A, offset=1)),
+                                               np.diagonal(A, offset=0) - N / self.T,
+                                               np.append(np.diagonal(A, offset=1), [0])])
+
+            self.psi_2[n, :] = D.dot(solve_banded([1, 1], band, D_inv.dot(self.psi_2[n + 1, :])))
+            #psi[n, :] = np.dot(D, np.linalg.solve(np.eye(self.nx) - delta_t * A, D_inv.dot(psi[n + 1, :])));
+
+
+        self.u_2 = np.zeros([N + 1, self.nx - 1])
+        for n in range(N + 1):
+            for i in range(self.nx - 1):
+                self.u_2[n, i] = -2 / beta * self.B[0, 0] * (- log(self.psi_2[n, i + 1]) + log(self.psi_2[n, i])) / self.dx
+        #self.u = 2 / beta * np.gradient(np.log(self.psi), self.dx, 1)
+
+    def u_true_2(self, x, t):
+        x = x.unsqueeze(1)
+        x = x.t()
+        i = np.floor((np.clip(x, -self.xb, self.xb - 2 * self.dx).squeeze(0) + self.xb) / self.dx).long()
+        i[-1] -= 2
+        n = int(np.ceil(t / self.delta_t))
+        return np.array(self.u_2[n, i]).reshape([1, len(i)])
+        #return interpolate.interp1d(self.xvec, self.u)(x)[:, n]
+
+    def v_true(self, x, t):
+        return None
+
+    def u_true(self, x, t):
+        return np.concatenate([self.u_true_1(x[:, i], t).T for i in range(self.d_1)] + [self.u_true_2(x[:, i], t).T for i in range(self.d_1, self.d)], 1).T
