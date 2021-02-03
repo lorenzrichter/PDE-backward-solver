@@ -575,7 +575,7 @@ class DoubleWell():
         self.kappa_pt = pt.tensor(self.kappa_).to(device).float()
         self.B = np.eye(self.d)
         self.B_pt = pt.tensor(self.B).to(device).float()
-        self.C = np.eye(self.d) + np.random.randn(self.d, self.d)
+        self.C = np.eye(self.d) + 0.1 * np.random.randn(self.d, self.d)
         self.C_pt = pt.tensor(self.C).to(device).float()
         self.X_0 = -np.ones(self.d)
         self.ref_sol_is_defined = False
