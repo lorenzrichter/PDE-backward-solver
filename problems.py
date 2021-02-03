@@ -561,7 +561,7 @@ class DoubleWell():
     '''
         Multidimensional double well potential
     '''
-    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np'):
+    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True):
         self.name = name
         self.d = d
         self.d_1 = d_1
@@ -575,10 +575,13 @@ class DoubleWell():
         self.kappa_pt = pt.tensor(self.kappa_).to(device).float()
         self.B = np.eye(self.d)
         self.B_pt = pt.tensor(self.B).to(device).float()
+        self.C = np.eye(self.d) + np.random.randn(self.d, self.d)
+        self.C_pt = pt.tensor(self.C).to(device).float()
         self.X_0 = -np.ones(self.d)
         self.ref_sol_is_defined = False
         self.sigma_modus = 'constant'
         self.modus = modus
+        self.diagonal = diagonal
 
     def V(self, x):
         return self.kappa * (x**2 - 1)**2
@@ -587,9 +590,13 @@ class DoubleWell():
         return (x**2 - 1)**2
 
     def grad_V(self, x):
+        if self.diagonal:
+            if self.modus == 'pt':
+                return 4.0 * self.kappa_pt * (x * (x**2 - pt.ones(self.d).to(device)))
+            return 4.0 * self.kappa_ * (x * (x**2 - np.ones(self.d)))
         if self.modus == 'pt':
-            return 4.0 * self.kappa_pt * (x * (x**2 - pt.ones(self.d).to(device)))
-        return 4.0 * self.kappa_ * (x * (x**2 - np.ones(self.d)))
+            return 2 * x * pt.mm(self.C_pt, (x**2 - 1).t()).t() + 2 * x * pt.mm(self.C_pt.t(), (x**2 - 1).t()).t() 
+        return 2 * x * self.C.dot((x**2 - 1).T).T + 2 * x * self.C.T.dot((x**2 - 1).T).T
 
     def b(self, x):
         return -self.grad_V(x)
