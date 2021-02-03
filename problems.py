@@ -561,7 +561,10 @@ class DoubleWell():
     '''
         Multidimensional double well potential
     '''
-    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True):
+    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True, seed=42):
+
+        np.random.seed(seed)
+
         self.name = name
         self.d = d
         self.d_1 = d_1
@@ -609,7 +612,7 @@ class DoubleWell():
     def h(self, t, x, y, z):
         if self.modus == 'pt':
             return -0.5 * pt.sum(z**2, dim=1)
-        return -0.5 * np.sum(z**2, dim=1)
+        return -0.5 * np.sum(z**2, axis=-1)
 
     def g_1(self, x_1):
         if self.modus == 'pt':
@@ -778,3 +781,14 @@ class DoubleWell():
 
     def u_true(self, x, t):
         return np.concatenate([self.u_true_1(x[:, i], t).T for i in range(self.d_1)] + [self.u_true_2(x[:, i], t).T for i in range(self.d_1, self.d)], 1).T
+
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
+        return loss
