@@ -10,7 +10,7 @@ from pytorch_future import hessian
 device = pt.device('cpu')
 
 
-def get_X_process(problem, K, delta_t, seed=42):
+def get_X_process(problem, K, delta_t, seed=42, x=None, t=0):
     '''
     :param problem: problem object that specifies the PDE problem
     :param K: batch size, i.e. number of samples
@@ -22,11 +22,14 @@ def get_X_process(problem, K, delta_t, seed=42):
 
     np.random.seed(seed)
 
-    N = int(np.ceil(problem.T / delta_t))
+    N = int(np.ceil((problem.T - t) / delta_t))
     sq_delta_t = np.sqrt(delta_t)
 
     X = np.zeros([N + 1, K, problem.d])
-    X[0, :, :] = np.repeat(problem.X_0[np.newaxis, :], K, axis=0)
+    if x is None:
+        X[0, :, :] = np.repeat(problem.X_0[np.newaxis, :], K, axis=0)
+    else:
+        X[0, :, :] = np.repeat(x[np.newaxis, :], K, axis=0)
     xi = np.random.randn(N + 1, K, problem.d)
 
     if problem.sigma_modus == 'constant':
