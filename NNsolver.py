@@ -26,7 +26,7 @@ class NNSolver():
         self.learning_rates = learning_rates
         self.gradient_steps = gradient_steps
         self.NN_class = NN_class
-        self.Y_n = [NN_class(problem.d, 1, lr=self.learning_rates[n], seed=seed) for n in range(self.N)] + [problem.g]
+        self.Y_n = [NN_class(problem.d, 1, lr=self.learning_rates[n], problem=problem, seed=seed) for n in range(self.N)] + [problem.g]
 
         # logging
         self.runtimes = []
@@ -67,7 +67,7 @@ class NNSolver():
                     Y_eval.backward(retain_graph=True)
                     grad_Y_n, = pt.autograd.grad(Y_eval, X_n, create_graph=True)
                     if self.problem.sigma_modus == 'variable':
-                        sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n).detach().cpu().numpy(), [0, 2, 1]))
+                        sigma_transpose = pt.tensor(np.transpose(self.problem.sigma(X_n).detach().cpu().numpy(), [0, 2, 1])).to(device)
                         Z_n = pt.bmm(sigma_transpose, grad_Y_n.unsqueeze(2)).squeeze(2)
                     else:
                         Z_n = pt.mm(self.problem.sigma(X_n).t(), grad_Y_n.t()).t()

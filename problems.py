@@ -119,8 +119,8 @@ class CosExp():
         return np.cos(np.sum(x, 1)) * np.exp((self.T - t) / 2)
 
 
-class AllenKahn():
-    def __init__(self, name='CosExp', d=1, T=0.3, seed=42, modus='np'):
+class AllenCahn():
+    def __init__(self, name='AllenCahn', d=1, T=0.3, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.modus = modus
