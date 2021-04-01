@@ -19,10 +19,10 @@ run_set_dynamics = True
 if run_set_dynamics == True:
     import set_dynamics
     
-load_num = 'V_p2_pham_'
+load_num = 'V_p3_pham_'
 x0 = np.load('x0.npy')
 
-vfun = valuefunction_TT.Valuefunction_TT(load_num, True, 'c_add_fun_list_p2_pham.npy')
+vfun = valuefunction_TT.Valuefunction_TT(load_num, True, 'c_add_fun_list_p3_pham.npy')
 testOde = ode.Ode()
 # vfun.set_add_fun(testOde.calc_end_reward, testOde.calc_end_reward_grad)
 vfun.set_add_fun(testOde.calc_end_reward, testOde.calc_end_reward_grad, testOde.calc_end_reward_hess)

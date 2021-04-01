@@ -27,7 +27,7 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
     
     horizon = 1
     sigma = np.sqrt(2)
-    interval_min = -2 # integration area of HJB equation is [interval_min, interval_max]**n
+    interval_min = -12 # integration area of HJB equation is [interval_min, interval_max]**n
     interval_max = 2
     x0 = -1*np.ones(n)
     # print('x0', x0)

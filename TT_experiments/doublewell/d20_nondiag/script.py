@@ -3,7 +3,7 @@ import numpy as np
 import set_dynamics, main_p
 # import set_dynamics, main_p, main_t
 
-pol_deg_vec = np.arange(1, 2)
+pol_deg_vec = np.arange(7, 8)
 # pol_deg_vec = np.arange(12, 30)
 # pol_deg_vec = [5]
 num_samples_p = [2000]

@@ -578,7 +578,9 @@ class DoubleWell():
         self.kappa_pt = pt.tensor(self.kappa_).to(device).float()
         self.B = np.eye(self.d)
         self.B_pt = pt.tensor(self.B).to(device).float()
-        self.C = np.eye(self.d) + 0.1 * np.random.randn(self.d, self.d)
+        self.C = np.eye(self.d) + np.sqrt(0.1) * np.random.randn(self.d, self.d)
+        u , v = np.linalg.eig(self.C)
+        print(u)
         self.C_pt = pt.tensor(self.C).to(device).float()
         self.X_0 = -np.ones(self.d)
         self.ref_sol_is_defined = False
@@ -625,7 +627,7 @@ class DoubleWell():
     def g(self, x):
         if self.modus == 'pt':
             return ((pt.sum(self.eta_pt * (x - pt.ones(self.d).to(device))**2, 1)))
-        return ((np.sum(self.eta_ * (x - np.ones(self.d))**2, 1)))
+        return ((np.sum(self.eta_ * (x - np.ones(self.d))**2, -1)))
 
     def compute_reference_solution(self, delta_t=0.005, xb=2.5, nx=1000):
 

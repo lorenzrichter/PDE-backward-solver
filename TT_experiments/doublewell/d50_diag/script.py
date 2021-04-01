@@ -3,8 +3,8 @@ import numpy as np
 import set_dynamics, main_p
 # import set_dynamics, main_p, main_t
 
-pol_deg_vec = np.arange(1, 2)
-# pol_deg_vec = np.arange(13, 30)
+pol_deg_vec = np.arange(3, 4)
+# pol_deg_vec = np.arange(12, 30)
 # pol_deg_vec = [5]
 num_samples_p = [2000]
 n_vec = [50]
@@ -17,6 +17,7 @@ for i2 in num_samples_p:
         for i3 in n_vec:
             for i0 in pol_deg_vec:
                 print('pol_deg, num_valuefunctions, nos, n', i0, i1, i2, i3)
+                print('flip and sort active')
                 set_dynamics.set_dynamics(i0, i1, i3)
                 main_p.main_p(i2)
                 # main_t.main_t()

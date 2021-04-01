@@ -47,7 +47,7 @@ class LLGC():
 
     def h(self, t, x, y, z):
         if self.modus == 'pt':
-            return -0.5 * pt.sum(z**2, shape=1)
+            return -0.5 * pt.sum(z**2, dim=1)
         BTx = B.T @ x.T
         lx = x.T @ self.Q
         return
@@ -119,8 +119,8 @@ class CosExp():
         return np.cos(np.sum(x, 1)) * np.exp((self.T - t) / 2)
 
 
-class AllenKahn():
-    def __init__(self, name='CosExp', d=1, T=0.3, seed=42, modus='np'):
+class AllenCahn():
+    def __init__(self, name='AllenCahn', d=1, T=0.3, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.modus = modus
@@ -561,10 +561,10 @@ class DoubleWell():
     '''
         Multidimensional double well potential
     '''
-    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np'):
-        if d_1 + d_2 != d:
-            d_1 = d
-            d_2 = 0
+    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True, seed=42):
+
+        np.random.seed(seed)
+
         self.name = name
         self.d = d
         self.d_1 = d_1
@@ -578,10 +578,15 @@ class DoubleWell():
         self.kappa_pt = pt.tensor(self.kappa_).to(device).float()
         self.B = np.eye(self.d)
         self.B_pt = pt.tensor(self.B).to(device).float()
+        self.C = np.eye(self.d) + np.sqrt(0.1) * np.random.randn(self.d, self.d)
+        u , v = np.linalg.eig(self.C)
+        print(u)
+        self.C_pt = pt.tensor(self.C).to(device).float()
         self.X_0 = -np.ones(self.d)
         self.ref_sol_is_defined = False
         self.sigma_modus = 'constant'
         self.modus = modus
+        self.diagonal = diagonal
 
     def V(self, x):
         return self.kappa * (x**2 - 1)**2
@@ -590,9 +595,13 @@ class DoubleWell():
         return (x**2 - 1)**2
 
     def grad_V(self, x):
+        if self.diagonal:
+            if self.modus == 'pt':
+                return 4.0 * self.kappa_pt * (x * (x**2 - pt.ones(self.d).to(device)))
+            return 4.0 * self.kappa_ * (x * (x**2 - np.ones(self.d)))
         if self.modus == 'pt':
-            return 4.0 * self.kappa_pt * (x * (x**2 - pt.ones(self.d).to(device)))
-        return 4.0 * self.kappa_ * (x * (x**2 - np.ones(self.d)))
+            return 2 * x * pt.mm(self.C_pt, (x**2 - 1).t()).t() + 2 * x * pt.mm(self.C_pt.t(), (x**2 - 1).t()).t() 
+        return 2 * x * self.C.dot((x**2 - 1).T).T + 2 * x * self.C.T.dot((x**2 - 1).T).T
 
     def b(self, x):
         return -self.grad_V(x)
@@ -605,7 +614,7 @@ class DoubleWell():
     def h(self, t, x, y, z):
         if self.modus == 'pt':
             return -0.5 * pt.sum(z**2, dim=1)
-        return -0.5 * np.sum(z**2, -1)
+        return -0.5 * np.sum(z**2, axis=-1)
 
     def g_1(self, x_1):
         if self.modus == 'pt':
@@ -771,19 +780,12 @@ class DoubleWell():
         if not x.shape == (1, self.d):
             x = x.reshape((1, self.d))
         return np.sum(self.v_true_1(x[:, :self.d_1], t)) + np.sum(self.v_true_2(x[:, self.d_1:], t))
+        #return np.concatenate([self.v_true_1(x[:, i][:, np.newaxis], t).T for i in range(self.d_1)] + [self.v_true_2(x[:, i][:, np.newaxis],, t).T for i in range(self.d_1, self.d)], 1).T
+
 
     def u_true(self, x, t):
         return np.concatenate([self.u_true_1(x[:, i], t).T for i in range(self.d_1)] + [self.u_true_2(x[:, i], t).T for i in range(self.d_1, self.d)], 1).T
 
-
-    # t \in R                   is current time
-    # x \in samples x d         is sample matrix
-    # v \in samples             is value function evaluated at t, x
-    # vt \in samples            is time derivative of v at t, x
-    # vx \in samples x d        is gradient of v w.r.t x at t, x
-    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
-    # returns: PDE_loss at every sample point
-    # returns is a vector \in samples
     def pde_loss(self, t, x, v, vt, vx, vxx):
         assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
         assert len(v.shape) == 1

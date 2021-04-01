@@ -463,7 +463,7 @@ class Valuefunction_TT:
         ranks_changed = False
         ranks_counter = 0
         # while _n_sweep < n_sweep and rel_val > rel_val_tol:
-        while _n_sweep < n_sweep and rel_val > rel_val_tol and rel_val_test > rel_val_tol or _n_sweep <= 0:
+        while _n_sweep < n_sweep and rel_val > rel_val_tol and rel_val_test > (rel_val_tol-0.0001) or _n_sweep <= 0:
             if ranks_counter >= min_sweep_before_adapt:
                 adapt = True
             if ranks_before != V.ranks():

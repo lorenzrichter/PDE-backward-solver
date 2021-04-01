@@ -13,8 +13,9 @@ class Ode:
         self.n = int(load_me[5])
         load_me = np.load('save_me.npy')
         self.T = self.t_vec_s[-1]
-        # self.problem = problems.DoubleWell(d=self.n, T = self.T)
-        self.problem = problems.DoubleWell(d=self.n, d_1=50, d_2=0, T = self.T, eta=.05, kappa=.1); print('care low eta and kappa')
+        # self.problem = problems.DoubleWell(d=self.n, T = self.T, diagonal = True)
+        # self.problem = problems.DoubleWell(d=self.n, T = self.T, diagonal = True, kappa=0.1, eta=0.05); print('warning low kappa/eta')
+        self.problem = problems.DoubleWell(d=self.n, d_1=self.n, d_2=0, T = self.T, eta=.05, kappa=.1, diagonal = True); print('care low eta and kappa')
 
     def calc_end_reward(self, t, x):
         return self.problem.g(x.T)
@@ -26,12 +27,12 @@ class Ode:
 
     def calc_end_reward_grad(self, t, x):
         if len(x.shape) == 1:
-            return self.problem.kappa_ * 2 * (x - 1)
+            return self.problem.eta_ * 2 * (x - 1)
         else:
-            return self.problem.kappa_[:, None] * 2 * (x - 1)
+            return self.problem.eta_[:, None] * 2 * (x - 1)
     
     def calc_end_reward_hess(self, t, x):
-        ret = np.diag(2 * self.problem.kappa_)
+        ret = np.diag(2 * self.problem.eta_)
         if len(x.shape) == 1:
             return ret
         else:

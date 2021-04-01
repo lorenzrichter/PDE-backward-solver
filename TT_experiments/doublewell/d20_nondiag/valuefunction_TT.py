@@ -446,7 +446,7 @@ class Valuefunction_TT:
         smin_list = []
         val_list = []
         val_list_test = []
-        maxrank = 2
+        maxrank = 6
         maxranks = maxrank*np.ones(V.order()-1)
         maxranksiter = V.dimensions[0]
         counter = 0

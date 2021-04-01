@@ -114,15 +114,17 @@ def main_t(pol_deg, testOde, _type, plot_vec):
         v_x = vfun.calc_grad(curr_t, samples).T
         v_xx = vfun.calc_hessian(curr_t, samples).transpose((2,0,1))
         loss = testOde.problem.pde_loss(curr_t, samples.T, v_of_x, v_t, v_x, v_xx)
+        # print(np.sort(np.abs(loss**2    ))[-20:])
         loss_true = v_of_x - v_true
         avg_loss_vec.append(np.abs(loss))
         avg_loss_true_vec.append(np.abs(loss_true / v_true))
+        print('avglosspde', np.mean(np.abs(loss)**2), 'max', np.max(np.abs(loss)**2))
         # print('rel_loss_true[-1]', avg_loss_true_vec[-1])
-        print('rel_loss_true[-1]', np.mean(avg_loss_true_vec[-1]))
+        print('rel_loss_true[-1]', np.mean(avg_loss_true_vec[-1]), 'max', np.max(avg_loss_true_vec[-1]))
     avg_loss_true_vec = np.vstack(avg_loss_true_vec)
     avg_loss_vec = np.vstack(avg_loss_vec)
     print('avg_loss_true_vec', np.mean(avg_loss_true_vec))
-    # print('avg loss pde', np.mean(avg_loss_vec[:-1]))
+    print('avg loss pde', np.mean(avg_loss_vec[:-1]))
     # print('avg loss true ', np.mean(avg_loss_true_vec[:-1]))
     
     return values, eval_at_xx, v_xo, avg_loss_vec, avg_loss_true_vec, v_xo_ref
@@ -148,8 +150,8 @@ Y_ref = np.zeros([N + 1, K])
 print('calculate reference by MC simulation - this might take some time')
 for n in range(X.shape[0]):
     for k in range(X.shape[1]):
-        X_, xi = get_X_process(testOde.problem, 100, delta_t, seed=44, t=n * delta_t, x=X[n, k, :])
-        Y_ref[n, k] = -np.log(np.mean(np.exp(-testOde.problem.g(X[-1, :, :]))))
+        X_, xi = get_X_process(testOde.problem, 1000, delta_t, seed=46, t=n * delta_t, x=X[n, k, :])
+        Y_ref[n, k] = -np.log(np.mean(np.exp(-testOde.problem.g(X_[-1, :, :]))))
 
 
 true_values = Y_ref
@@ -161,8 +163,8 @@ print('true_values.shape', true_values.shape)
 
 samples_mat = samples_mat.transpose((2,1,0))
 noise_vec = np.sqrt(testOde.tau)*noise_vec.transpose((2,1,0))
-min_pol_deg = 2
-max_pol_deg = 3
+min_pol_deg = 7
+max_pol_deg = 13
 v_x0 = []
 # for i0 in range(samples_mat.shape[2]):
     # avg_norm = np.mean(la.norm(samples_mat[:,:,i0], axis=0))
@@ -243,15 +245,15 @@ avg_loss_list = []
 for i0 in range(len(avg_loss)):
     avg_loss_list.append(np.mean(avg_loss[i0][1:, :]**2))
     # avg_loss_list.append(np.mean(avg_loss[i0][1:]))
-    print('avg_loss', avg_loss_list[-1])
+    print('avg PDE loss', avg_loss_list[-1])
 # plt.show()
 plt.figure()
 plt.plot(avg_loss_list)
-plt.title('avgloss')
+plt.title('avg PDE loss')
 
 plt.figure()
 for i0 in avg_loss_true:
-    print('i0', i0.shape)
+    print('i0', i0.shape, 'mean error true', np.mean(i0))
     plt.plot(plot_vec, np.mean(i0, axis=1))
 plt.xlabel('t')
 plt.title('mean relative error over time')

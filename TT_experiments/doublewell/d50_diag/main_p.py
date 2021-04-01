@@ -41,7 +41,7 @@ def main_p(nos = None):
     dof = vfun.calc_dof()
     dof_factor = 6  # samples = dof_factor*(ordersoffreedom)
     if nos is None:
-        nos = 1000
+        nos = 100000
     nos_test_set = nos  # number of samples of the test set
     print('number of samples', nos)
     
@@ -61,7 +61,7 @@ def main_p(nos = None):
     print('The calculations took:, time(), perf_counter()', t10 - t00, t11 - t01 )
     testOde.problem.compute_reference_solution()
     testOde.problem.compute_reference_solution_2()
-    print('ref at x', testOde.compute_reference(0, np.load('x0.npy')))
+    # print('ref at x', testOde.compute_reference(0, np.load('x0.npy'))) # ref is wrong for nondiag noise
     for i0 in range(len(vfun.V)):
         pickle.dump(testpolit.v.V[i0], open('V_p'+str(vfun.pol_deg)+'_'+method+'_{}'.format(str(i0)), 'wb'))
         np.save('c_add_fun_list_p'+str(vfun.pol_deg)+'_'+method, testpolit.v.c_add_fun_list)

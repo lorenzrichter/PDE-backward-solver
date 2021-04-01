@@ -27,10 +27,10 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
     
     horizon = 1
     sigma = np.sqrt(2)
-    interval_min = -2 # integration area of HJB equation is [interval_min, interval_max]**n
-    interval_max = 2
+    interval_min = -3 # integration area of HJB equation is [interval_min, interval_max]**n
+    interval_max = 3
     x0 = -1*np.ones(n)
-    print('x0', x0)
+    # print('x0', x0)
     
     rank = 2
     
@@ -38,6 +38,7 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
     
     b = 1 # left end of Domain
     a = -1 # right end of Domain
+    lambd = 0.1 # cost parameter
     gamma = 0 # discount factor, 0 for no discount
     boundary = 'Neumann' # use 'Neumann' or "Dirichlet
     use_full_model = True # if False, model is reduced to r Dimensions
@@ -49,7 +50,34 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
     gamma_vec = np.ones(n)
     
     np.random.seed(1)
+    def build_matrices(n, boundary_condition, r = 0):
+        A = 1/(5*n)*np.eye(n)
+        B = np.eye(n)*np.sqrt(2)
+        # A += np.random.normal(scale = std_deriv, size=A.shape)
+        # B += np.random.normal(scale = std_deriv, size=B.shape)
+        Q = np.zeros((n,n))
+        R = 1/2*np.eye(n)
+    
+    
+        return A, B, Q, R
+    A, B, Q, R = build_matrices(n, boundary, 0)
+    # print('A', A)
+    # print('B', B)
+    # print('R', R)
+    R_discr = R * tau
+    R_inv = la.inv(R)
+    L = np.eye(n)
+    # print('L', L)
+    np.save("A", A)
     np.save("x0", x0)
+    np.save("save_me", load)
+    np.save("B", B)
+    np.save('gamma_vec', gamma_vec)
+    np.save("Q", Q)
+    np.save('R', R)
+    np.save("R", R_discr)
+    np.save("R_inv", R_inv)
+    np.save('L', L)
     np.save("save_me", load)
     np.save('t_vec_p', t_vec_p)
     np.save('t_vec_s', t_vec_s)
@@ -58,7 +86,7 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
     'delete from here if you do not want to use xerus'
     
     set_V_new = True
-    print(set_V_new)
+    # print(set_V_new)
     
     import orth_pol
     
@@ -105,4 +133,4 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None):
         V_new.canonicalize_left()
     else:
         V_new = 0*xe.TTTensor.random([pol_deg + 1]*n, desired_ranks)
-    # pickle.dump(V_new, open("V_new", 'wb')) # we have commented this out because we see large variance in this results for this experiment / the python-port of xerus cannot set seeds (up until now)
+    pickle.dump(V_new, open("V_new", 'wb'))

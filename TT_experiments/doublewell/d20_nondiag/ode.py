@@ -26,12 +26,12 @@ class Ode:
 
     def calc_end_reward_grad(self, t, x):
         if len(x.shape) == 1:
-            return self.problem.kappa_ * 2 * (x - 1)
+            return self.problem.eta_ * 2 * (x - 1)
         else:
-            return self.problem.kappa_[:, None] * 2 * (x - 1)
+            return self.problem.eta_[:, None] * 2 * (x - 1)
     
     def calc_end_reward_hess(self, t, x):
-        ret = np.diag(2 * self.problem.kappa_)
+        ret = np.diag(2 * self.problem.eta_)
         if len(x.shape) == 1:
             return ret
         else:
