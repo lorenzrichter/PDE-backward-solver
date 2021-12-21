@@ -42,7 +42,7 @@ class LLGC():
 
     def sigma(self, x):
         if self.modus == 'pt':
-            return self.B_pt
+            return pt.tensor(self.B_pt)
         return self.B
 
     def h(self, t, x, y, z):
@@ -50,12 +50,20 @@ class LLGC():
             return -0.5 * pt.sum(z**2, dim=1)
         BTx = B.T @ x.T
         lx = x.T @ self.Q
-        return
+        return 
 
     def g(self, x):
         if self.modus == 'pt':
             return pt.mm(x, self.alpha_pt)[:, 0]
         return x.dot(self.alpha)[:, 0]
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        pass
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        pass
 
     def u_true(self, x, t):
         return -self.sigma(x).T.dot(expm(self.A.T * (self.T - t)).dot(
@@ -112,6 +120,39 @@ class CosExp():
             return pt.cos(pt.sum(x, 1))
         return np.cos(np.sum(x, 1))
 
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            ret = np.zeros(x.shape)
+            for i0 in range(x.shape[0]):
+                ret[i0] = -np.sin(np.sum(x))
+            return ret
+        else:
+            ret = np.zeros(x.shape)
+            sin = -np.sin(np.sum(x, axis=0))
+            ret[None, :] = sin
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            ret = np.zeros((x.shape[0], x.shape[0]))
+            ret[:, :] = -np.cos(np.sum(x))
+            return ret
+        else:
+            ret = np.zeros((x.shape[0], x.shape[0], x.shape[1]))
+            cosvec = -np.cos(np.sum(x, axis=0))
+            ret = cosvec[None, None, :]
+            return ret
+
+
+
+
+
     def u_true(self, x, t):
         return np.repeat((np.sin(np.sum(x, 1)) * np.exp((self.T - t) / 2) / np.sqrt(self.d))[:, np.newaxis], 2, 1)
 
@@ -152,6 +193,35 @@ class AllenCahn():
         if self.modus == 'pt':
             return 1 / (2 + 2 / 5 * pt.sum(x**2, 1))
         return 1 / (2 + 2 / 5 * np.linalg.norm(x, axis=1)**2)
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            ret = np.zeros(x.shape)
+            for i0 in range(x.shape[0]):
+                ret[i0] = -(5*x[i0])/(5 + la.norm(x)**2)**2
+            return ret
+        else:
+            ret = -(5*x) / (5 + la.norm(x, axis=0)**2)**2
+            return ret
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        denominator = (0.4*la.norm(x, axis = 0)**2 + 2)**3
+        if len(x.shape) == 1:
+            ret = np.tensordot(x, 1.28*x/denominator, axes=((),()))
+            ret[range(self.d), range(self.d)] = 1.28*x**2 / denominator  - 0.8 / (0.4*la.norm(x, axis = 0)**2 + 2)**2
+            return ret
+        else:
+            ret = np.einsum('ik,jk,k->ijk', x, x, 1.28/(denominator))
+            ret[range(self.d), range(self.d),:] = 1.28*x**2 / denominator  - 0.8 / (0.4*la.norm(x, axis = 0)**2 + 2)**2
+            return ret
+
 
     def u_true(self, x, t):
         print('no reference solution known')
@@ -220,18 +290,13 @@ class UnboundedSin():
             D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * pt.mean(pt.where(x < 0,  pt.sin(x), pt.zeros(x.shape).to(device)), 1)
             ret = - Ut - 0.5 * self.Sig_pt * self.Sig_pt * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal) + self.rescal * (u**2 + 1 / pt.sqrt(pt.tensor([self.d]).float().to(device)) * u.squeeze() * pt.sum(Du, 1))
         else:
-            # u time derivative
             Ut = - np.mean(np.where(x < 0,  np.sin(x), x), axis=-1)
-            # u value
             xSum = x @ np.arange(1., self.d + 1.)
             cosU = np.cos(xSum)
             UVal = -(self.T - t) * Ut + cosU
-            # U X derivarive (sum)
             DUVal = (self.T - t) * np.mean(np.where(x < 0, np.cos(x), np.ones(np.shape(x))), axis=-1) - self.d * (self.d + 1.) / 2. * np.sin(xSum)
-            # sum of diag of Hessian
             D2UVal = -cosU * self.d * (self.d + 1) * (2 * self.d + 1) / 6. - (self.T - t) * np.mean(np.where(x < 0, np.sin(x), np.zeros(np.shape(x))), axis=-1)
 
-            # ret =  - Ut- 0.5*self.Sig*self.Sig*D2UVal - self.rescal*(UVal*DUVal/self.d + UVal*UVal)+ self.rescal*( np.power(u,2.) + np.multiply(u,np.mean(Du,axis=-1)))
             ret = - Ut - 0.5 * self.Sig * self.Sig * D2UVal - self.rescal * (UVal * DUVal / self.d + UVal * UVal)+ self.rescal * (np.power(u, 2.) + 1 / np.sqrt(self.d) * np.multiply(u, np.sum(Du, axis=-1)))
         return  ret.squeeze()
 
@@ -241,6 +306,25 @@ class UnboundedSin():
             return pt.cos(pt.mm(x, a).squeeze(1))
         a = 1.0 * np.arange(1, self.d + 1)
         return np.cos(x @ a)
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        a = 1.0 * np.arange(1, self.d + 1)
+        return np.outer(a, np.sin(x.T @ (-1*a)))
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        a = 1.0 * np.arange(1, self.d + 1)
+        cos_value = -np.cos(x.T @ (1 * a))
+        outer_1 = np.outer(a, cos_value)
+        ret = np.tensordot(a, outer_1, axes=((),()))
+        return np.tensordot(a, outer_1, axes=((),()))
+
 
     def u_true(self, x, t):
         print('no reference solution known')
@@ -272,7 +356,7 @@ class UnboundedSin():
 
 
 class Schloegl_SPDE():
-    def __init__(self, name='CosExp', d=1, T=1, seed=42, modus='np'):
+    def __init__(self, name='Schloegl_SPDE', d=1, T=1, seed=42, modus='np'):
         a, b = -1, 1 # interval of the PDE
         s = np.linspace(a, b, d) # gridpoints
         nu = 1 # diffusion constant
@@ -319,8 +403,6 @@ class Schloegl_SPDE():
         self.Q_pt = pt.tensor(self.Q).float()
         self.R = R
         self.R_pt = pt.tensor(self.R).float()
-        self.alpha = np.ones([self.d, 1]) # not needed, can delete?
-        self.alpha_pt = pt.tensor(self.alpha).float() # not needed, can delete?
         self.X_0 = 1.2*np.ones(self.d)
         self.sigma_modus = 'constant'
 
@@ -374,6 +456,20 @@ class Schloegl_SPDE():
             return np.einsum('li,ik,lk->l', x, self.Q, x)
         return 
 
+    # Warning - function not tested - only for Q symmetric
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        return 2 * self.Q @ x
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        return 2 * self.Q
+    
+
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
@@ -404,7 +500,7 @@ class Schloegl_SPDE():
 
 
 class BondpriceMultidim():
-    def __init__(self, name='bondprice_multidim', d=1, T=1, seed=42, modus='np'):
+    def __init__(self, name='CIR', d=1, T=1, seed=42, modus='np'):
 
         np.random.seed(seed)
         self.A = np.random.uniform(size=d)
@@ -466,6 +562,20 @@ class BondpriceMultidim():
         return np.ones((x.shape[0])).squeeze()
 
 
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        return 0
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        return np.zeros((self.n, self.n, x.shape[1]))
+
+
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
@@ -509,8 +619,8 @@ class HJB():
 
     def b(self, x):
         if self.modus == 'pt':
-            return  0 * pt.ones(x.shape).to(device) # pt.zeros(x.shape).to(device) # 
-        return 0 * np.ones(x.shape) # np.zeros(x.shape) # 
+            return pt.zeros(x.shape).to(device)
+        return np.zeros(x.shape)
 
     def sigma(self, x):
         if self.modus == 'pt':
@@ -526,15 +636,244 @@ class HJB():
     def g(self, x):
         if self.modus == 'pt':
             return pt.log(0.5 + 0.5 * pt.sum(x**2, 1))
-        return log(0.5 + 0.5 * np.sum(x**2, 1))
+        return log(0.5 + 0.5 * np.sum(x**2, -1))
+
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        return 2 * x / (np.sum(x**2, axis=0) + 1)
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        sum_x_plus1 = np.sum(x**2, axis=0) + 1
+        sum_x_plus1_squared = sum_x_plus1**2
+        if len(x.shape) == 1:
+            ret =  np.tensordot(x, -4*x/sum_x_plus1_squared, axes=((),()))
+            ret[range(self.d), range(self.d)] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            return ret
+        else:
+            ret = np.einsum('ik,jk,k->ijk', x, x, -4/(sum_x_plus1_squared))
+            ret[range(self.d), range(self.d),:] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            return ret
 
     def u_true(self, x, t):
         print('no reference solution known')
         return 0
 
     def v_true(self, x, t):
+        X_T_t = x[None, :] + np.sqrt(2 * (self.T - t)) * np.random.randn(100000, self.d) 
+        return -np.log(np.mean(1 / (0.5 + 0.5 * np.sum(X_T_t**2, 1))))
+        # X_T = np.sqrt(2) * np.random.randn(10000, self.d)
+        # return -np.log(np.mean(1 / (0.5 + 0.5 * np.sum(X_T**2, 1))))
+
+
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
+        return loss
+
+
+
+class HJBcos():
+    def __init__(self, name='HJBcos', d=1, T=1, seed=42, modus='np'):
+
+        np.random.seed(seed)
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B = np.sqrt(2.0) * np.eye(self.d)
+        self.B_pt = pt.tensor(self.B).float().to(device)
+        self.X_0 = np.zeros(self.d)
+        self.sigma_modus = 'constant'
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return pt.zeros(x.shape).to(device)
+        return np.zeros(x.shape)
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return self.B_pt
+        return self.B
+
+    def h(self, t, x, y, z):
+        if self.modus == 'pt':
+            return -0.5 * pt.sum(z**2, 1)
+        else:
+            return -0.5 * np.sum(z**2, 1)
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return pt.cos(pt.sum(x, -1))
+        if len(x.shape) == 1:
+            return np.cos(np.sum(x))
+        return np.cos(np.sum(x, -1))
+
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            ret = np.zeros(x.shape)
+            for i0 in range(x.shape[0]):
+                ret[i0] = -np.sin(np.sum(x))
+            return ret
+        else:
+            ret = np.zeros(x.shape)
+            sin = -np.sin(np.sum(x, axis=0))
+            ret[None, :] = sin
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            ret = np.zeros((x.shape[0], x.shape[0]))
+            ret[:, :] = -np.cos(np.sum(x))
+            return ret
+        else:
+            ret = np.zeros((x.shape[0], x.shape[0], x.shape[1]))
+            cosvec = -np.cos(np.sum(x, axis=0))
+            ret = cosvec[None, None, :]
+            return ret
+
+
+
+
+
+
+
+
+    def u_true(self, x, t):
         print('no reference solution known')
         return 0
+
+    def v_true(self, x, t):
+        if len(x.shape) == 1:
+            X_T_t = x[None, :] + np.sqrt(2 * (self.T - t)) * np.random.randn(1000000, self.d) 
+            return -np.log(np.mean(np.exp(-self.g(X_T_t))))
+        else:
+            X_T_t = x[:, None, :] + np.sqrt(2 * (self.T - t)) * np.random.randn(x.shape[0], 10000, self.d) 
+            ret =  -np.log(np.mean(np.exp(-self.g(X_T_t)), -1))
+            return ret.squeeze()
+
+
+
+    # t \in R                   is current time
+    # x \in samples x d         is sample matrix
+    # v \in samples             is value function evaluated at t, x
+    # vt \in samples            is time derivative of v at t, x
+    # vx \in samples x d        is gradient of v w.r.t x at t, x
+    # vxx \in samples x d x d   is hessian of v w.r.t. x at t, x
+    # returns: PDE_loss at every sample point
+    # returns is a vector \in samples
+    def pde_loss(self, t, x, v, vt, vx, vxx):
+        assert x.shape[0] == v.shape[0] == vt.shape[0] == vx.shape[0] == vxx.shape[0]
+        assert len(v.shape) == 1
+        assert x.shape == vx.shape
+        assert len(vxx.shape) == 3
+        sigma = self.sigma(x)
+        assert sigma.shape == (self.d, self.d)
+        sigmaTsigma = sigma.T @ sigma
+        loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
+        return loss
+
+
+
+
+class Heat():
+    def __init__(self, name='Heat', d=1, T=1, seed=42, modus='np'):
+
+        np.random.seed(seed)
+        self.modus = modus
+        self.name = name
+        self.d = d
+        self.T = T
+        self.B = np.sqrt(2.0) * np.eye(self.d)
+        self.B_pt = pt.tensor(self.B).float().to(device)
+        self.X_0 = np.zeros(self.d)
+        self.sigma_modus = 'constant'
+
+    def b(self, x):
+        if self.modus == 'pt':
+            return pt.zeros(x.shape).to(device)
+        return np.zeros(x.shape)
+
+    def sigma(self, x):
+        if self.modus == 'pt':
+            return self.B_pt
+        return self.B
+
+    def h(self, t, x, y, z):
+        if self.modus == 'pt':
+            return pt.zeros(x.shape[0])
+        else:
+            return np.zeros(x.shape[0])
+
+    def g(self, x):
+        if self.modus == 'pt':
+            return pt.log(0.5 + 0.5 * pt.sum(x**2, 1))
+        return log(0.5 + 0.5 * np.sum(x**2, -1))
+
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        return 2 * x / (np.sum(x**2, axis=0) + 1)
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        sum_x_plus1 = np.sum(x**2, axis=0) + 1
+        sum_x_plus1_squared = sum_x_plus1**2
+        if len(x.shape) == 1:
+            ret =  np.tensordot(x, -4*x/sum_x_plus1_squared, axes=((),()))
+            ret[range(self.n), range(self.n)] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            return ret
+        else:
+            ret = np.einsum('ik,jk,k->ijk', x, x, -4/(sum_x_plus1_squared))
+            # print('(1.28*x**2 - 0.8) / denominator', 1.28*x**2 / denominator  - 0.8 / (0.4*la.norm(x, axis = 0)**2 + 2)**2)
+            ret[range(self.n), range(self.n),:] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            return ret
+
+
+    def u_true(self, x, t):
+        print('no reference solution known')
+        return 0
+
+    def v_true(self, x, t):
+        if len(x.shape) == 1:
+            X_T_t = x[None, :] + np.sqrt(2 * (self.T - t)) * np.random.randn(10000, self.d) 
+            return np.mean(self.g(X_T_t))
+        else:
+            X_T_t = x[:, None, :] + np.sqrt(2 * (self.T - t)) * np.random.randn(x.shape[0], 10000, self.d) 
+            ret =  np.mean(self.g(X_T_t), axis = -1)
+            return ret.squeeze()
 
 
     # t \in R                   is current time
@@ -561,7 +900,7 @@ class DoubleWell():
     '''
         Multidimensional double well potential
     '''
-    def __init__(self, name='Double well', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True, seed=42):
+    def __init__(self, name='DoubleWell', d=1, d_1=1, d_2=0, T=1, eta=1, kappa=1, modus='np', diagonal=True, seed=42):
 
         np.random.seed(seed)
 
@@ -625,7 +964,29 @@ class DoubleWell():
     def g(self, x):
         if self.modus == 'pt':
             return ((pt.sum(self.eta_pt * (x - pt.ones(self.d).to(device))**2, 1)))
-        return ((np.sum(self.eta_ * (x - np.ones(self.d))**2, 1)))
+        return ((np.sum(self.eta_ * (x - np.ones(self.d))**2, -1)))
+
+
+    # Warning - function not tested
+    def g_grad(self, x):
+        if self.modus == 'pt':
+            pass
+        if len(x.shape) == 1:
+            return self.eta_ * 2 * (x - 1)
+        else:
+            return self.eta_[:, None] * 2 * (x - 1)
+    
+
+    # Warning - function not tested
+    def g_hess(self, x):
+        if self.modus == 'pt':
+            pass
+        ret = np.diag(2 * self.eta_)
+        if len(x.shape) == 1:
+            return ret
+        else:
+            return np.repeat(ret[:,:,None], x.shape[1], axis=2)
+
 
     def compute_reference_solution(self, delta_t=0.005, xb=2.5, nx=1000):
 
@@ -775,7 +1136,16 @@ class DoubleWell():
         #return interpolate.interp1d(self.xvec, self.u)(x)[:, n]
 
     def v_true(self, x, t):
-        return np.sum(self.v_true_1(x[:, :self.d_1], t)) + np.sum(self.v_true_2(x[:, self.d_1:], t))
+        if self.diagonal:
+            if len(x.shape) == 1:
+                return np.sum(self.v_true_1(x[None, :self.d_1], t)) + np.sum(self.v_true_2(x[None, self.d_1:], t))
+            else:
+                return np.sum(self.v_true_1(x[:, :self.d_1], t)) + np.sum(self.v_true_2(x[:, self.d_1:], t))
+        else:
+            print('reference can only be sampled')
+            return 0
+
+
         #return np.concatenate([self.v_true_1(x[:, i][:, np.newaxis], t).T for i in range(self.d_1)] + [self.v_true_2(x[:, i][:, np.newaxis],, t).T for i in range(self.d_1, self.d)], 1).T
 
 
@@ -792,3 +1162,4 @@ class DoubleWell():
         sigmaTsigma = sigma.T @ sigma
         loss = vt + np.einsum('il,il->i', self.b(x), vx) + 1 / 2 * (np.sum(sigmaTsigma[None, :, :] * vxx, axis = (1, 2))) + self.h(t, x, v, (sigma.T @ vx.T).T)
         return loss
+
