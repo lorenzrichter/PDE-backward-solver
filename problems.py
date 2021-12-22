@@ -573,7 +573,7 @@ class BondpriceMultidim():
     def g_hess(self, x):
         if self.modus == 'pt':
             pass
-        return np.zeros((self.n, self.n, x.shape[1]))
+        return np.zeros((self.d, self.d, x.shape[1]))
 
 
     def u_true(self, x, t):
@@ -853,12 +853,12 @@ class Heat():
         sum_x_plus1_squared = sum_x_plus1**2
         if len(x.shape) == 1:
             ret =  np.tensordot(x, -4*x/sum_x_plus1_squared, axes=((),()))
-            ret[range(self.n), range(self.n)] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            ret[range(self.d), range(self.d)] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
             return ret
         else:
             ret = np.einsum('ik,jk,k->ijk', x, x, -4/(sum_x_plus1_squared))
             # print('(1.28*x**2 - 0.8) / denominator', 1.28*x**2 / denominator  - 0.8 / (0.4*la.norm(x, axis = 0)**2 + 2)**2)
-            ret[range(self.n), range(self.n),:] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
+            ret[range(self.d), range(self.d),:] = 2 * (-2 * x**2 + sum_x_plus1) / sum_x_plus1_squared
             return ret
 
 
