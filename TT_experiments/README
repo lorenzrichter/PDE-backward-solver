@@ -1,3 +1,0 @@
-In order to run the experiments you need to install the SALSA branch of the c++ package xerus (https://libxerus.org/), which is available on github. We use the commit from Jan 04 2021.
-
-First run script.py to get the results. Then run main_t.py to obtain plots.
