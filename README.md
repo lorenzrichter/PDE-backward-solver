@@ -4,7 +4,7 @@ http://proceedings.mlr.press/v139/richter21a.html
 https://arxiv.org/abs/2102.11830
 
 ## Usage
-For the NN-experiments, run the Notebooks located in 'experiments'
+For the NN-experiments, run the Notebooks located in 'NN_experiments'
 
 For the TT-solver, script.py, located in the TT_experiments folder, should be executed. You can choose between
 different premade setups (from the paper) or make a custom setup by setting the 'setup' parameter (l. 29 in
