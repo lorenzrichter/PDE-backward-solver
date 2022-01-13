@@ -7,7 +7,7 @@ import torch as pt
 from utilities import get_X_process
 
 
-device = pt.device('cpu')
+device = pt.device('cuda' if pt.cuda.is_available() else 'cpu')
 
 
 class NNSolver():

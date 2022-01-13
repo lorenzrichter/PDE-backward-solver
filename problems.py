@@ -8,7 +8,7 @@ from scipy.linalg import expm, solve_banded
 from scipy.linalg import solve_continuous_are
 
 
-device = 'cpu'  # pt.device('cuda' if pt.cuda.is_available() else 'cpu')
+device = pt.device('cuda' if pt.cuda.is_available() else 'cpu')
 
 
 class LLGC():

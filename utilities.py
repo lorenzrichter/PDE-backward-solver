@@ -11,7 +11,7 @@ except ImportError:
 
 
 
-device = pt.device('cpu')
+device = pt.device('cuda' if pt.cuda.is_available() else 'cpu')
 
 
 def get_X_process(problem, K, delta_t, seed=42, x=None, t=0):
