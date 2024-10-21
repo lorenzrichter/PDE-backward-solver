@@ -53,10 +53,6 @@ class Ode:
         return self.problem.g(x.T)
 
 
-    def calc_end_reward(self, t, x):
-        return self.problem.g(x.T)
-
-
     def calc_end_reward_grad(self, t, x):
         return self.problem.g_grad(x)
 

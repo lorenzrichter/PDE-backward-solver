@@ -19,7 +19,7 @@ run_set_dynamics = False
 if run_set_dynamics == True:
     import set_dynamics
     
-def run(pol_deg_vec, method_vec, problem):
+def run(pol_deg_vec, method_vec, problem, seed, save=True):
     def main_t(pol_deg, testOde, _type, plot_vec):
         load_num = 'V_p'+str(pol_deg)+'_'+_type+'_'
         x0 = np.load('x0.npy')
@@ -123,17 +123,17 @@ def run(pol_deg_vec, method_vec, problem):
 
     for method in method_vec:
         _type = method
-        print('method:', method)
+        # print('method:', method)
         load_me = np.load('save_me.npy')
         tau = load_me[4]
         testOde = ode.Ode(problem)
         if testOde.problem.name == 'DoubleWell':
             testOde.problem.compute_reference_solution()
             testOde.problem.compute_reference_solution_2()
-        seed = 44
+        # seed = 44
         delta_t = tau
         # nos = 3
-        nos = 10
+        nos = 1000
         K = nos
         samples_mat, noise_vec =  get_X_process(testOde.problem, K, delta_t, seed)
         # print('samples_mat', samples_mat)
@@ -146,23 +146,23 @@ def run(pol_deg_vec, method_vec, problem):
         # print('samples_mat.shape', samples_mat.shape)
         noise_vec = np.sqrt(testOde.tau)*noise_vec.transpose((2,1,0))
         t_vec_p = np.load('t_vec_p.npy')
-        print('calculate reference')
+        # print('calculate reference')
         def sample_ref(x0, t):
             if len(x0.shape) == 1:
-                X_, xi = get_X_process(testOde.problem, 1000, delta_t, seed=46, t=t, x=x0)
+                X_, xi = get_X_process(testOde.problem, 1000, delta_t, seed=seed+1, t=t, x=x0)
                 return -np.log(np.mean(np.exp(-testOde.problem.g(X_[-1, :, :]))))
             else:
                 ret = np.zeros(x0.shape[1])
                 for i0 in range(x0.shape[1]):
-                    X_, xi = get_X_process(testOde.problem, 1000, delta_t, seed=46, t=t, x=x0[:, i0])
+                    X_, xi = get_X_process(testOde.problem, 1000, delta_t, seed=seed+1, t=t, x=x0[:, i0])
                     ret[i0] = -np.log(np.mean(np.exp(-testOde.problem.g(X_[-1, :, :]))))
                 return ret
 
         try:
-            print('try loading reference values')
-            Y_ref = np.load('Y_ref_d'+str(testOde.n)+'_'+str(problem)+'.npy')
+            # print('try loading reference values')
+            Y_ref = np.load('Y_ref_d'+str(testOde.n)+'_'+str(problem)+'_'+str(seed)+'.npy')
         except:
-            print('exception file does not exist (yet), compute reference values instead')
+            # print('exception file does not exist (yet), compute reference values instead')
         # if True:
             Y_ref = np.zeros((samples_mat.shape[2], samples_mat.shape[1]))
             for ind in range(samples_mat.shape[2]):
@@ -176,8 +176,9 @@ def run(pol_deg_vec, method_vec, problem):
                             Y_ref[ind, i0] = testOde.problem.v_true(samples[:, i0], curr_t)
                     else:
                         Y_ref[ind, i0] = testOde.problem.v_true(samples[:, i0], curr_t)
-            np.save('Y_ref_d'+str(testOde.n)+'_'+str(problem), Y_ref)
-        print('done with calculating reference')
+            if save:
+                np.save('Y_ref_d'+str(testOde.n)+'_'+str(problem)+'_'+str(seed), Y_ref)
+        # print('done with calculating reference')
         
         v_x0 = []
         # for i0 in range(samples_mat.shape[2]):
@@ -254,7 +255,7 @@ def run(pol_deg_vec, method_vec, problem):
         
         
         avg_loss_list = []
-        print('PDE LOSS')
+        # print('PDE LOSS')
         for i0 in range(len(avg_loss)):
             avg_loss_list.append(np.mean(avg_loss[i0][1:, :]**2))
             # avg_loss_list.append(np.mean(avg_loss[i0][1:]))
@@ -264,11 +265,12 @@ def run(pol_deg_vec, method_vec, problem):
         plt.title('avg PDE loss')
         
         plt.figure()
-        print('MEAN RELATIVE ERROR')
+        # print('MEAN RELATIVE ERROR')
         for i0 in range(len(avg_loss_true)):
             # print('i0', i0.shape, 'mean error true', 
-            print('avg loss for polynomial degree = {}:'.format(pol_deg_vec[i0]), np.mean(avg_loss_true[i0]))
+            print('avg ref loss for polynomial degree = {}:'.format(pol_deg_vec[i0]), np.mean(avg_loss_true[i0]))
             plt.plot(plot_vec, np.mean(avg_loss_true[i0], axis=1))
         plt.xlabel('t')
         plt.title('mean relative error over time')
         plt.show()
+        return np.mean(avg_loss_true[i0]), avg_loss_list[-1]

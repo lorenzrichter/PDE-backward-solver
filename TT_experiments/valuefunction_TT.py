@@ -111,7 +111,7 @@ class Valuefunction_TT:
         else:
             # print('t is not float. t is', type(t))
             V, add_fun_const = t
-            V = t
+            # V = t
         # print('V in calc_grad', xe.Tensor(V))
         # print('t, self.t_to_ind(t)', t, self.t_to_ind(t),'frob_norm(v)', xe.frob_norm(V))
         if len(x.shape) == 1:
@@ -381,12 +381,12 @@ class Valuefunction_TT:
 
 
     def prepare_data_while_opt(self, t, x):
-        return [self.P_batch(x), self.t_to_ind(t), self.add_fun(t, x)]
+        return [self.P_batch(x), self.t_to_ind(t), self.add_fun(t, x), self.dP_batch(x), self.grad_add_fun(t, x)]
 
 
-    def solve_linear_HJB(self, data, params):
-        _, mat_list, ind, add_fun_list, rew_MC, P_vec, calc_validation_set_fun, curr_samples_test, rew_MC_test = data
-        # print('ind', ind)
+    def solve_linear_HJB(self, data, params, method):
+        _, mat_list, ind, add_fun_list, dmat_list, d_add_fun_list, rew_MC, P_vec, calc_validation_set_fun, sigma_noise, curr_samples_test, rew_MC_test, noise_test = data
+        t = self.t_vec_p[ind] 
         V = 1*self.V[ind]
         n_sweep, rel_val_tol = params
 
@@ -412,7 +412,7 @@ class Valuefunction_TT:
         adapt = False
         kminor = 1
         min_sweep_before_adapt = 2
-        old_val_test = calc_validation_set_fun([V, self.c_add_fun_list[ind]], curr_samples_test, rew_MC_test)
+        old_val_test = calc_validation_set_fun([V, self.c_add_fun_list[ind]], t, curr_samples_test, rew_MC_test, noise_test)
         ranks_before = V.ranks()
         ranks_changed = False
         ranks_counter = 0
@@ -434,9 +434,12 @@ class Valuefunction_TT:
             _n_sweep += 1; ranks_counter += 1
             # print('val', val)
             c_old = self.c_add_fun_list[ind] 
-            old_val, val, c_new = self.update_components_np(V, val, mat_list, rew_MC, _n_sweep, P_vec, smin, omega, kminor, adapt, maxranks, add_fun_list, self.c_add_fun_list[ind])
+            if method == 'semi':
+                old_val, val, c_new = self.semi_sweep(V, val, mat_list, rew_MC, _n_sweep, P_vec, smin, omega, kminor, adapt, maxranks, add_fun_list, self.c_add_fun_list[ind], dmat_list, d_add_fun_list, sigma_noise)
+            else:
+                old_val, val, c_new = self.regression_sweep(V, val, mat_list, rew_MC, _n_sweep, P_vec, smin, omega, kminor, adapt, maxranks, add_fun_list, self.c_add_fun_list[ind])
             self.c_add_fun_list[ind] = c_new
-            val_test = calc_validation_set_fun([V, self.c_add_fun_list[ind]], curr_samples_test, rew_MC_test)
+            val_test = calc_validation_set_fun([V, self.c_add_fun_list[ind]], t, curr_samples_test, rew_MC_test, noise_test)
             rel_val = (old_val - val) / old_val
             rel_val_test = (old_val_test - val_test) / old_val_test
             val_list.append(val)
@@ -526,7 +529,7 @@ class Valuefunction_TT:
         return Unew, Snew, Vtnew
 
 
-    def update_components_np(self, G, w, mat_list, rew_MC, n_sweep, P_constraints_vec, smin, omega, kminor,adapt, maxranks, add_fun_list, current_fun_c):
+    def regression_sweep(self, G, w, mat_list, rew_MC, n_sweep, P_constraints_vec, smin, omega, kminor,adapt, maxranks, add_fun_list, current_fun_c):
         # print('maxranks', maxranks)
         noo = G.order()
         Smu_left,Gamma, Smu_right, Theta, U_left, U_right, Vt_left, Vt_right = (xe.Tensor() for i in range(8))
@@ -694,6 +697,192 @@ class Valuefunction_TT:
         # print('after', error1, error2)
         return w, error1 + error2, current_fun_c
 
+    def semi_sweep(self, G, w, mat_list, rew_MC, n_sweep, P_constraints_vec, smin, omega, kminor,adapt, maxranks, add_fun_list, current_fun_c, dmat_list, d_add_fun_list, sigma_noise):
+        d_add_noise = np.sum(d_add_fun_list * sigma_noise, 0)
+        noo = G.order()
+        Smu_left,Gamma, Smu_right, Theta, U_left, U_right, Vt_left, Vt_right = (xe.Tensor() for i in range(8))
+        p = mat_list[0].shape[0]
+        i1,i2,i3,i4,i5,i6,j1,j2,j3,j4,k1,k2,k3 = xe.indices(13)
+        constraints_constant = 0
+        num_constraints = P_constraints_vec[0].shape[1]
+        d = G.order()
+          # building Stacks for operators   
+        lStack_P = [np.ones(shape=[1,rew_MC.size])]
+        rStack_P = [np.ones(shape=[1,rew_MC.size])]
+        lStack_dP = [np.zeros(shape=[1,rew_MC.size])]
+        rStack_dP = [np.zeros(shape=[1,rew_MC.size])]
+        G0_lStack = [np.ones(shape=(1, num_constraints))]
+        G0_rStack = [np.ones(shape=(1, num_constraints))]
+        if G.order() > 1:
+            G.move_core(1)
+            G.move_core(0)
+        for i0 in range(d-1,0,-1): 
+            G_tmp = G.get_component(i0).to_ndarray()
+            A_tmp_P = mat_list[i0]
+            A_tmp_dP = dmat_list[i0]
+            rStack_Pnp = rStack_P[-1]
+            rStack_dPnp = rStack_dP[-1]
+            G_tmp_np_P = np.tensordot(G_tmp, A_tmp_P, axes=((1),(0)))
+            G_tmp_np_dP = np.tensordot(G_tmp, A_tmp_dP, axes=((1),(0)))
+            rStack_Pnpres = np.einsum('jkm,km->jm',G_tmp_np_P, rStack_Pnp)
+            rStack_dPnpres_1 = np.einsum('jkm,km,m->jm',G_tmp_np_dP, rStack_Pnp, sigma_noise[i0,:])
+            rStack_dPnpres_2 = np.einsum('jkm,km->jm',G_tmp_np_P, rStack_dPnp)
+            rStack_P.append(rStack_Pnpres)
+            rStack_dP.append(rStack_dPnpres_1 + rStack_dPnpres_2)
+            
+            rStack_G0_tmp = G0_rStack[-1]            
+            G0_tmp_np = np.tensordot(G_tmp, P_constraints_vec[i0], axes=((1),(0)))
+            G0_tmp = np.einsum('jkm,km->jm',G0_tmp_np, rStack_G0_tmp)
+            # G0_tmp = np.einsum('ijk,jl,kl->il',G_tmp, P_constraints_vec[i0], rStack_G0_tmp)
+            G0_rStack.append(G0_tmp)
+        #loop over each component from left to right
+
+
+
+
+
+        for i0 in range(0, d):
+            # get singular values and orthogonalize wrt the next core mu
+            if i0 > 0:
+                # get left and middle component
+                Gmu_left = G.get_component(i0-1)
+                Gmu_middle = G.get_component(i0)
+                (U_left(i1,i2,k1), Smu_left(k1,k2), Vt_left(k2,i3)) << xe.SVD(Gmu_left(i1,i2,i3))
+                Gmu_middle(i1,i2,i3) << Vt_left(i1,k2) *Gmu_middle(k2,i2,i3)
+                if G.ranks()[i0-1] < maxranks[i0-1] and adapt \
+                    and Smu_left[int(np.max([Smu_left.dimensions[0] - kminor,0])),int(np.max([int(Smu_left.dimensions[1] - kminor),0]))] > smin:
+                    U_left, Smu_left, Gmu_middle  = self.adapt_ranks(U_left, Smu_left, Gmu_middle,smin)
+                sing = [Smu_left[i,i] for i in range(Smu_left.dimensions[0])]
+                # print('left', 'smin', smin, 'sing', sing)
+                
+                Gmu_middle(i1,i2,i3) << Smu_left(i1,k1)*Gmu_middle(k1,i2,i3)
+                G.set_component(i0-1, U_left)
+                G.set_component(i0, Gmu_middle)
+                Gamma = np.zeros(Smu_left.dimensions) # build cut-off sing value matrix Gamma
+                for j in range(Smu_left.dimensions[0]):
+                    Gamma[j,j] = 1 / np.max([smin,Smu_left[j,j]])
+                # print('Gamma', Gamma)
+            # update Stacks
+            if i0 > 0:
+                G_tmp = G.get_component(i0-1).to_ndarray()
+                A_tmp_P = mat_list[i0-1]
+                A_tmp_dP = dmat_list[i0-1]
+    #            G_tmp_np = np.einsum('ijk,jl->ikl', G_tmp, A_tmp_P)
+                G_tmp_np_P = np.tensordot(G_tmp, A_tmp_P, axes=((1),(0)))
+                G_tmp_np_dP = np.tensordot(G_tmp, A_tmp_dP, axes=((1),(0)))
+                lStack_Pnp = lStack_P[-1]
+                lStack_Pnpres = np.einsum('jm,jkm->km', lStack_Pnp, G_tmp_np_P)
+                lStack_dPnp = lStack_dP[-1]
+                lStack_dPnpres_1 = np.einsum('jm,jkm,m->km', lStack_Pnp, G_tmp_np_dP, sigma_noise[i0-1,:])
+                lStack_dPnpres_2 = np.einsum('jm,jkm->km', lStack_dPnp, G_tmp_np_P)
+                lStack_P.append(lStack_Pnpres)
+                lStack_dP.append(lStack_dPnpres_1 + lStack_dPnpres_2)
+                del rStack_P[-1]
+                del rStack_dP[-1]
+                G0_lStack_tmp = G0_lStack[-1]
+                G0_tmp_np = np.tensordot(G_tmp, P_constraints_vec[i0-1], axes=((1),(0)))
+                G0_tmp = np.einsum('jm,jkm->km', G0_lStack_tmp, G0_tmp_np)
+                # G0_tmp = np.einsum('il,ijk,jl->kl',G0_lStack_tmp, G_tmp, P_constraints_vec[i0-1])
+                G0_lStack.append(G0_tmp)
+                del G0_rStack[-1]
+
+
+            # get singular values, orthogonalize and fix stacks
+            if i0 < d - 1:
+                # get middle and rightcomponent
+                Gmu_middle = G.get_component(i0)
+                Gmu_right = G.get_component(i0+1)
+                (U_right(i1,i2,k1), Smu_right(k1,k2), Vt_right(k2,i3)) << xe.SVD(Gmu_middle(i1,i2,i3))
+
+
+                sing = [Smu_right[i,i] for i in range(Smu_right.dimensions[0])]
+                # print('right', 'smin', smin, 'sing', sing)
+                Gmu_right(i1,i2,i3) << Vt_right(i1,k1) *Gmu_right(k1,i2,i3)
+                #if mu == d-2 and G.ranks()[mu] < maxranks[mu] and adapt and Smu_right[Smu_right.dimensions[0] - kminor,Smu_right.dimensions[1] - kminor] > smin:
+                #    U_right, Smu_right, Gmu_right  = adapt_ranks(U_right, Smu_right, Gmu_right,smin)
+                Gmu_middle(i1,i2,i3) << U_right(i1,i2,k1) * Smu_right(k1,i3)
+                G.set_component(i0, Gmu_middle)
+                G.set_component(i0+1, Gmu_right)
+                Theta = np.zeros([G.ranks()[i0], G.ranks()[i0]]) # build cut-off sing value matrix Theta
+                # Theta = np.zeros([Gmu_middle.dimensions[2],Gmu_middle.dimensions[2]]) # build cut-off sing value matrix Theta
+                for j in range(Theta.shape[0]):
+                    if j >= Smu_right.dimensions[0]:
+                        sing_val = 0
+                    else:
+                        singval = Smu_right[j,j] 
+                    Theta[j,j] = 1 / np.max([smin,singval])
+                stack_old =  rStack_P[-1]
+                rStack_P[-1] = np.tensordot(Vt_right.to_ndarray(), stack_old, ((1, 0)))
+                rStack_dP[-1] = np.tensordot(Vt_right.to_ndarray(), rStack_dP[-1], ((1, 0)))
+    
+            Ai_P = mat_list[i0]; Ai_dP = dmat_list[i0]
+            lStack_Pnp = lStack_P[-1]; rStack_Pnp = rStack_P[-1]
+            lStack_dPnp = lStack_dP[-1]; rStack_dPnp = rStack_dP[-1]
+            op_pre = np.einsum('il,jl,kl->ijkl',lStack_Pnp,Ai_P,rStack_Pnp)
+            op_pre += np.einsum('il,jl,kl,l->ijkl',lStack_Pnp,Ai_dP,rStack_Pnp,sigma_noise[i0,:]) + np.einsum('il,jl,kl->ijkl',lStack_Pnp,Ai_P,rStack_dPnp) + np.einsum('il,jl,kl->ijkl',lStack_dPnp,Ai_P,rStack_Pnp)   
+    #        op = np.einsum('ijkl,mnol->ijkmno', op_pre, op_pre)
+            op_G0 = np.einsum('il,jl,kl->ijkl', G0_lStack[-1], P_constraints_vec[i0], G0_rStack[-1])
+            op = np.zeros(op_pre.shape[:-1]+op_pre.shape[:-1])
+            op_dim = op.shape
+            Gi = G.get_component(i0)
+
+
+            id_reg_p = np.eye(p)
+            if i0 > 0:
+                id_reg_r = np.eye(Gi.dimensions[2])
+                # op_reg(i1,i2,i3,j1,j2,j3) << Gamma(i1,k1) * Gamma(k1,j1) * id_reg_r(i3,j3)  * id_reg_p(i2,j2)
+                op_reg = np.einsum('ij,jk,lm,no->inlkom', Gamma, Gamma, id_reg_r, id_reg_p)
+                # print('op_reg', op_reg)
+                op += w*w * op_reg
+            if i0 < d-1:
+                id_reg_l = np.eye(Gi.dimensions[0])
+                # op_reg(i1,i2,i3,j1,j2,j3) << Theta(i3,k1) * Theta(k1,j3) * id_reg_l(i1,j1)  * id_reg_p(i2,j2)
+                op_reg = np.einsum('ij,jk,lm,no->lnimok', Theta, Theta, id_reg_l, id_reg_p)
+                op += w*w * op_reg
+
+            op = op.reshape((op_dim[0]*op_dim[1]*op_dim[2], op_dim[3]*op_dim[4]*op_dim[5]))
+            
+
+            op = np.vstack([op, np.zeros(op.shape[0])[None,:]])
+            op = np.hstack([op, np.zeros(op.shape[0])[:,None]])
+            rhs_dim = op_pre.shape[:-1]
+            op_pre = op_pre.reshape(op_dim[0]*op_dim[1]*op_dim[2], op_pre.shape[-1])
+            lastrow = add_fun_list[None, :] + d_add_noise
+            op_pre = np.concatenate([op_pre, lastrow], axis=0)
+            op += np.tensordot(op_pre, op_pre, axes=((1),(1)))
+            # op += 2*rew_MC.size*constraints_constant*np.tensordot(op_G0, op_G0, axes=((3),(3)))
+    #        rhs = np.einsum('ijkl,l->ijk', op_pre, rew_MC)
+            rhs = np.tensordot(op_pre, rew_MC, axes=((1),(0)))
+
+            if(n_sweep == 1 and i0 == 0):
+                comp = G.get_component(i0).to_ndarray()
+                Ax = np.tensordot(op_pre[:-1, :].reshape(comp.shape+(rew_MC.size,)), comp, axes=([0,1,2],[0,1,2]))
+                curr_const = np.einsum('il,jl,kl,ijk ->l', G0_lStack[-1], P_constraints_vec[i0], G0_rStack[-1], comp)
+                w = min(np.linalg.norm(Ax + current_fun_c*(add_fun_list + d_add_noise) - rew_MC)**2/rew_MC.size + constraints_constant*np.linalg.norm(curr_const)**2, 10000)
+                # w = min(np.linalg.norm(Ax  - rew_MC)**2/rew_MC.size + constraints_constant*np.linalg.norm(curr_const)**2, 10000)
+                # print('first_res', w, constraints_constant*np.linalg.norm(curr_const)**2)
+            op += 1e-0 * w * np.eye(op.shape[0])
+            rhs_reshape = rhs
+            sol_arr = np.linalg.solve(op, rhs_reshape)
+            current_fun_c = sol_arr[-1]
+            sol_arr = sol_arr[:-1]
+            sol_arr_reshape = sol_arr.reshape((rhs_dim[0], rhs_dim[1], rhs_dim[2]))
+            sol = xe.Tensor.from_buffer(sol_arr_reshape)
+            G.set_component(i0, sol)
+    
+        # calculate residuum
+    #    Ax = np.einsum('jkli,jkl->i', op_pre, sol_arr_reshape)
+        # print(i0)
+        comp = G.get_component(d-1).to_ndarray()
+        Ax = np.tensordot(op_pre[:-1, :].reshape(comp.shape+(rew_MC.size,)), comp, axes=([0,1,2],[0,1,2]))
+        curr_const = np.einsum('il,jl,kl,ijk ->l', G0_lStack[-1], P_constraints_vec[d-1], G0_rStack[-1], sol_arr_reshape)
+        # print(curr_const)
+        error1 = np.linalg.norm(Ax + current_fun_c*(add_fun_list + d_add_noise) - rew_MC)**2/rew_MC.size
+        # error1 = np.linalg.norm(Ax - rew_MC)**2/rew_MC.size
+        error2 = constraints_constant*np.linalg.norm(curr_const)**2
+        # print('after', error1, error2)
+        # current_fun_c = 0
+        return w, error1 + error2, current_fun_c
     def calc_dof(self):
         dof = 0  # calculate orders of freedom
         V = self.V[0]

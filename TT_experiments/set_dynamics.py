@@ -12,7 +12,7 @@ import numpy as np
 from scipy import linalg as la
 import pickle
 
-def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None, maxrank= 1, T = 1, interval_bounds=[-6,6], x0 = None):
+def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None, maxrank= 1, T = 1, interval_bounds=[-6,6], x0 = None, seed=42):
     if n is None:
         n = 5
     if pol_deg is None:
@@ -49,7 +49,6 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None, maxrank= 1, 
     std_deriv = 0.1
     gamma_vec = np.ones(n)
     
-    np.random.seed(1)
     # print('L', L)
     np.save("x0", x0)
     np.save("save_me", load)
@@ -59,5 +58,14 @@ def set_dynamics(pol_deg = None, num_valuefunctions = None, n=None, maxrank= 1, 
     #
     
     desired_ranks = [rank]*(n-1)
-    V_new = 0*xe.TTTensor.random([pol_deg + 1]*n, desired_ranks)
+
+    np.random.seed(seed)
+    V_new = xe.TTTensor.random([pol_deg + 1]*n, desired_ranks)
+    for i0 in range(V_new.order()):
+        V_new.set_component(i0, xe.Tensor.from_ndarray(np.random.normal(size=(V_new.get_component(i0).dimensions))))
+    V_new.move_core(0)
+    V_new = 0*V_new
     pickle.dump(V_new, open("V_new", 'wb'))
+
+if __name__ == '__main__':
+    set_dynamics()

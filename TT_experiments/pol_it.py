@@ -15,7 +15,7 @@ import problems
 
 
 class Pol_it:
-    def __init__(self, initial_valuefun, ode, polit_params):
+    def __init__(self, initial_valuefun, ode, polit_params, seed):
         self.v = initial_valuefun
         self.ode = ode
         self.v.set_add_fun(self.ode.calc_end_reward, self.ode.calc_end_reward_grad, self.ode.calc_end_reward_hess, self.ode.calc_end_reward_laplace)
@@ -28,6 +28,7 @@ class Pol_it:
         self.current_end_time = 0
         self.curr_ind = 0
         self.x0 = np.load('x0.npy')
+        self.seed = seed
         self.samples, self.samples_test, self.noise_vec, self.noise_vec_test = self.build_samples(-self.interval_half, self.interval_half)
         self.data_x = self.v.prepare_data_before_opt(self.samples)
         self.constraints_list = self.construct_constraints_list()
@@ -57,7 +58,7 @@ class Pol_it:
 
     def build_samples(self, samples_min, samples_max):
         self.ode.problem.X_0 = self.x0
-        seed = 42
+        seed = self.seed
         delta_t = self.ode.tau
         K = self.nos
         samples_mat, noise_vec =  get_X_process(self.ode.problem, K, delta_t, seed)
@@ -108,35 +109,45 @@ class Pol_it:
         rel_diff = 1
         pol_it_counter = 0
         rel_diff_eval = 1
+        avg = 0
+        self.rel_error = 0
         while(rel_diff > self.rel_tol and pol_iter < self.max_pol_iter and rel_diff_eval > self.rel_tol/10):
             pol_iter += 1
             V_old = 1*self.v.V[self.curr_ind]
-            curr_samples, rew_MC = self.build_rhs_batch()
-            curr_samples_test, rew_MC_test = self.build_rhs_batch(True)
+            curr_samples, rew_MC, noise = self.build_rhs_batch()
+            curr_samples_test, rew_MC_test, noise_test = self.build_rhs_batch(True)
             eval_V_before = self.v.eval_V(self.current_time, curr_samples_test) 
             calc_grad_before = self.v.calc_grad(self.current_time, curr_samples_test)
             if self.current_time == 0:
-                avg = 1/self.samples.shape[1]*np.sum(rew_MC)
-                # rew_MC[:] = avg
+                self.avg = 1/self.samples.shape[1]*np.sum(rew_MC)
+                # rew_MC[:] = self.avg
                 # curr_samples = curr_samples + np.random.randn(curr_samples.shape[0], curr_samples.shape[1])
                 # self.v.V[0].round([1]*len(self.v.V[0].ranks()))
-                print('RESULT v(x)', avg)
+                # print('RESULT v(x)', self.avg)
                 try:
-                    ref = self.ode.compute_reference(0, np.load('x0.npy'))
+                    self.ref = self.ode.compute_reference(0, np.load('x0.npy'))
                 except:
-                    print('reference could not be computed')
-                    ref = 0
-                if ref is not 0:
-                    print('rel_error', np.abs(avg - ref) / np.abs(ref)) 
-                # print('ref at x', ref)
+                    # print('reference could not be computed')
+                    self.ref = 0
+                if self.ref != 0:
+                    self.rel_error = np.abs(self.avg - self.ref) / np.abs(self.ref)
+                    # print('self.rel_error', self.rel_error)
+                else:
+                    self.rel_error = 'not computed'
+                # print('self.ref at x', self.ref)
     
             data_y = self.v.prepare_data_while_opt(self.current_time, curr_samples)
     
             # data = [self.data_x, data_y[0], data_y[1], rew_MC, self.constraints_list, self.calc_mean_error, curr_samples_test, rew_MC_test]
-            data = [self.data_x, data_y[0], data_y[1], data_y[2], rew_MC, self.constraints_list, self.calc_mean_error, curr_samples_test, rew_MC_test]
+            if self.ode.problem.sigma_modus == 'constant':
+                noise_changed = self.ode.problem.sigma(curr_samples.T) @ noise
+            else:
+                noise_changed = np.einsum('ijk,ki->ji', self.ode.problem.sigma(curr_samples.T), noise)
+                # noise_changed = np.einsum('ikj,ki->ji', self.ode.problem.sigma(curr_samples.T), self.v.calc_grad(self.current_time, curr_samples))
+            data = [self.data_x, data_y[0], data_y[1], data_y[2], data_y[3], data_y[4], rew_MC, self.constraints_list, self.calc_mean_error, noise_changed, curr_samples_test, rew_MC_test, noise_test]
             params = [self.n_sweep, self.rel_val_tol]
             
-            self.v.solve_linear_HJB(data, params)
+            self.v.solve_linear_HJB(data, params, self.method)
             eval_V_after = self.v.eval_V(self.current_time, curr_samples_test) 
             calc_grad_after = self.v.calc_grad(self.current_time, curr_samples_test)
             # postprocessing
@@ -168,8 +179,12 @@ class Pol_it:
         # mean_error_test_set = self.calc_mean_error(self.samples_test, y_mat_test, rew_MC_test)
         # print('frob_norm(V)', xe.frob_norm(self.v.V[self.curr_ind]))
     
-    def calc_mean_error(self, V, xmat, rew_MC):
-        error = (self.v.eval_V(V, xmat) - rew_MC)
+    def calc_mean_error(self, V, t, x, rew_MC, noise):
+        if self.method == 'semi':
+            z = self.calc_z(V, x)
+            error = (self.v.eval_V(V, x) - rew_MC + np.sum(z*noise, axis=0))
+        else:
+            error = (self.v.eval_V(V, x) - rew_MC)
         return np.linalg.norm(error)**2 / rew_MC.size
 
 
@@ -192,34 +207,37 @@ class Pol_it:
             curr_samples_next = self.samples_test[:,:,point+1]
             curr_c = self.c_test
             noise = self.noise_vec_test[:,:,point+1]
-
-        def calc_z(t, x):
-            if self.ode.problem.sigma_modus == 'constant':
-                return (self.ode.problem.sigma(x.T).T @ self.v.calc_grad(t, x))
-            else:
-                return np.einsum('ikj,ki->ji', self.ode.problem.sigma(x.T), self.v.calc_grad(t, x))
-
         if self.method == 'impl':
             y = self.v.eval_V(self.current_time, curr_samples)
             # z = self.ode.problem.sigma(curr_samples).T @ self.v.calc_grad(self.current_time, curr_samples)
-            z = calc_z(self.current_time, curr_samples)
+            z = self.calc_z(self.current_time, curr_samples)
             rew_MC = curr_c + self.v.tau * self.ode.h(self.current_time, curr_samples, y, z) - np.sum(z*noise, axis=0)
         elif self.method == 'nik':
             y = self.v.eval_V(self.current_time + self.v.tau, curr_samples_next)
             # z = self.ode.problem.sigma(curr_samples).T @ self.v.calc_grad(self.current_time + self.v.tau, curr_samples)
-            z = calc_z(self.current_time + self.v.tau, curr_samples_next)
+            z = self.calc_z(self.current_time + self.v.tau, curr_samples_next)
 
             # hess = self.ode.problem.sigma(curr_samples)[0,0]*self.v.calc_hessian(self.current_time + self.v.tau, curr_samples)
             # laplace = np.trace(hess)
-            laplace = self.ode.problem.sigma(curr_samples_next)[0,0]*self.v.calc_laplace(self.current_time + self.v.tau, curr_samples_next)
-            rew_MC = curr_c + self.v.tau * (self.ode.h(self.current_time+self.v.tau, curr_samples_next, y, z) - laplace) - np.sum(z*noise, axis=0)
+            laplace = self.v.calc_laplace(self.current_time + self.v.tau, curr_samples_next)
+            rew_MC = curr_c + self.v.tau * (self.ode.h(self.current_time+self.v.tau, curr_samples_next, y, z) - self.ode.problem.sigma(curr_samples_next)[0,0]**2*laplace) - np.sum(z*noise, axis=0)
+        elif self.method == 'semi':
+            y = self.v.eval_V(self.current_time + self.v.tau, curr_samples)
+            z = self.calc_z(self.current_time + self.v.tau, curr_samples)
+            rew_MC = curr_c + self.v.tau * self.ode.h(self.current_time + self.v.tau, curr_samples_next, y, z)
         else:
             y = self.v.eval_V(self.current_time+self.v.tau, curr_samples_next)
             # z = self.ode.problem.sigma(curr_samples).T @ self.v.calc_grad(self.current_time + self.v.tau, curr_samples)
-            z = calc_z(self.current_time + self.v.tau, curr_samples_next)
+            z = self.calc_z(self.current_time + self.v.tau, curr_samples_next)
             rew_MC = curr_c + self.v.tau * self.ode.h(self.current_time, curr_samples_next, y, z)
 
         # rew_MC = self.ode.compute_reference(self.current_time, curr_samples)
-        return curr_samples, rew_MC
+        return curr_samples, rew_MC, noise
 
+
+    def calc_z(self, t, x):
+        if self.ode.problem.sigma_modus == 'constant':
+            return (self.ode.problem.sigma(x.T).T @ self.v.calc_grad(t, x))
+        else:
+            return np.einsum('ikj,ki->ji', self.ode.problem.sigma(x.T), self.v.calc_grad(t, x))
 
